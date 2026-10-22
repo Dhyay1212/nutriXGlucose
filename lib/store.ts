@@ -3,6 +3,7 @@
 // otherwise falls back to this browser's localStorage (single-device demo mode).
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import type { Meal, Note, Reading, UserProfile } from "./types";
+import { registerDish } from "./dishes";
 
 const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
@@ -80,6 +81,7 @@ export async function listMeals(userId?: string): Promise<Meal[]> {
     if (error) throw error;
     xs = (data ?? []).map(mealFromRow);
   } else xs = byUser(LS.get<Meal>("meals"), userId);
+  for (const m of xs) for (const it of m.items) if (it.custom) registerDish(it.custom);
   return xs.sort((a, b) => b.eatenAt.localeCompare(a.eatenAt));
 }
 

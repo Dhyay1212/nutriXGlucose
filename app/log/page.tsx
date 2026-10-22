@@ -2,7 +2,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import UserProvider, { useUser } from "@/components/UserProvider";
-import { DISH_BY_ID, PORTION_OPTIONS, UNIT_LABEL, nutritionFor, sourceLabel } from "@/lib/dishes";
+import { DISH_BY_ID, PORTION_OPTIONS, UNIT_LABEL, nutritionFor, registerDish, sourceLabel } from "@/lib/dishes";
 import DishPicker from "@/components/DishPicker";
 import { detect, preloadYolo, summarise } from "@/lib/yolo";
 import { resizeImage } from "@/lib/image";
@@ -71,6 +71,7 @@ function LogMeal() {
       if (!res.ok) throw new Error(data.error || "Analysis failed");
       setDemo(!!data.demo);
       setAiNote(data.notes || "");
+      for (const d of data.dishes) if (d.custom) registerDish(d.custom);
       const list: Draft[] = data.dishes.map((d: any) => ({
           key: uid(),
           dishId: d.dishId ?? "",
@@ -79,6 +80,7 @@ function LogMeal() {
           portion: d.portion,
           confidence: d.confidence,
           matched: d.matched,
+          custom: d.custom,
           via: d.via,
         }));
       setItems(list.length ? list : [{ key: uid(), dishId: "", name: "", portion: 1, matched: false }]);
@@ -107,7 +109,10 @@ function LogMeal() {
         id: uid(),
         userId: user.id,
         eatenAt: fromLocalInput(when),
-        items: valid.map(({ dishId, portion, aiName, confidence }) => ({ dishId, name: DISH_BY_ID[dishId].name, portion, aiName, confidence })),
+        items: valid.map(({ dishId, portion, aiName, confidence }) => {
+          const d = DISH_BY_ID[dishId];
+          return { dishId, name: d.name, portion, aiName, confidence, ...(d.source === "AI estimate" ? { custom: d } : {}) };
+        }),
         photo: thumb,
         totals,
         logSeconds: Math.round((Date.now() - started.current) / 1000),
@@ -166,7 +171,7 @@ function LogMeal() {
                   }} />
                   <div className="tiny muted" style={{ marginTop: 4 }}>
                     {it.aiName && <>{it.via === "detector" ? "Detector saw" : "AI saw"} “{it.aiName}”{it.confidence != null && ` · ${Math.round(it.confidence * 100)}% sure`} · </>}
-                    {n && d ? <>{n.grams ? `${n.grams} g · ` : ""}{n.carbs} g carbs · {n.kcal} kcal · <span title={d.sourceName}>{sourceLabel(d)}</span></> : <span style={{ color: "var(--bad)" }}>Not in the NutriX table yet: pick the closest dish</span>}
+                    {n && d ? <>{n.grams ? `${n.grams} g · ` : ""}{n.carbs} g carbs · {n.kcal} kcal · <span title={d.sourceName} className={d.source === "AI estimate" ? "pill warn" : undefined}>{sourceLabel(d)}</span></> : <span style={{ color: "var(--bad)" }}>Not in the NutriX table yet: pick the closest dish</span>}
                   </div>
                 </div>
                 <button className="btn danger small" onClick={() => setItems((xs) => xs!.filter((x) => x.key !== it.key))}>Remove</button>

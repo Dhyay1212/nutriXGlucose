@@ -23,7 +23,7 @@ const GI_RULES: GiRule[] = [
   { re: /chicken|mutton|fish|egg|prawn|keema|meat|tandoori|kebab|tikka/i, gi: 40, group: "protein dishes" },
   { re: /dal|daal|rajma|chole|chana|chickpea|moong|urad|masoor|lentil|sambar|sambhar|rasam|kadhi|pesarattu|dhokla|khaman|besan/i, gi: 38, group: "dals & legumes" },
   { re: /aloo|potato|batata|pav bhaji|bhaji/i, gi: 72, group: "potato dishes" },
-  { re: /naan|kulcha|bhatura|bhature|puri|poori|bread|\bpav\b|pizza|pasta|noodle|maida|samosa|kachori/i, gi: 68, group: "refined flour" },
+  { re: /naan|kulcha|bhatura|bhature|puri|poori|bread|\bpav\b|pizza|pasta|noodle|maida|samosa|kachori|burger|sandwich|wrap|fries|momo/i, gi: 68, group: "refined flour" },
   { re: /bhindi|okra|baingan|brinjal|cabbage|gobi|gobhi|cauliflower|palak|spinach|methi|beans|lauki|tinda|karela|capsicum|mushroom|mixed veg|sabzi|subzi|curry|korma|masala|paneer/i, gi: 40, group: "vegetable curries" },
 ];
 export const DEFAULT_GI = 55;

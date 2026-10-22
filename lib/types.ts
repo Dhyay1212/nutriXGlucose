@@ -4,6 +4,7 @@ export interface MealItem {
   aiName?: string; // what Claude called it
   portion: number; // number of katoris or pieces
   confidence?: number; // 0..1 from Claude
+  custom?: import("./dishes").Dish; // AI-estimated dish not in the NutriX table (kept with the meal)
 }
 
 export interface Meal {

@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { DISHES, DISH_BY_ID, EVERYDAY, REFERENCE, matchDish } from "@/lib/dishes";
+import { DISHES, DISH_BY_ID, EVERYDAY, REFERENCE, matchDish, type Dish, type Unit } from "@/lib/dishes";
 import { callClaude, extractJson, hasClaude, redact } from "@/lib/claude";
 
 export const runtime = "nodejs";
@@ -7,10 +7,12 @@ export const maxDuration = 60;
 
 const SYSTEM = `You identify every food and drink in a meal photo. Most photos are Indian / South Asian home meals, but any cuisine counts (pizza, pasta, burgers, Chinese, desserts, packaged snacks…).
 Return ONLY JSON in this shape:
-{"dishes":[{"name":string,"dish_id":string|null,"portion":number,"unit":"katori"|"piece"|"glass"|"cup"|"serving","confidence":number}],"notes":string}
+{"dishes":[{"name":string,"dish_id":string|null,"portion":number,"unit":"katori"|"piece"|"glass"|"cup"|"serving","confidence":number,
+  "est":{"grams_per_unit":number,"kcal":number,"carbs":number,"protein":number,"fat":number,"fibre":number}}],"notes":string}
 
 Rules:
-- List every separate dish you can see (thalis often have 4-6). Include small sides like raita, curd, salad, pickle is optional.
+- List every separate dish you can see (thalis often have 4-6). Include small sides like raita, curd and salad.
+- Toppings, garnishes and seasonings belong to their dish: a pizza with cheese and chilli flakes is ONE item "Pizza"; do not list cheese, herbs, chilli flakes, oregano, ketchup or coriander separately. Pickle and papad only if clearly a side.
 - Prefer a dish_id from these lists when the dish matches; otherwise dish_id = null and give your best common name.
 Everyday dishes (prefer these for home-style plates):
 ${EVERYDAY.map((d) => `${d.id} = ${d.name} [${d.unit}${d.unitGrams ? `, 1 ≈ ${d.unitGrams} g` : ""}]`).join("\n")}
@@ -19,7 +21,8 @@ ${REFERENCE.map((d) => `${d.id} = ${d.name.replace(" (reference)", "")} [${d.uni
 If a dish is in neither list, set dish_id = null and give its usual name (e.g. "Pizza", "Pasta", "Veg burger"); the app searches its full database of 1,100+ dishes.
 - portion: count of the dish's unit — katoris (standard bowl) for dals, curries, rice and sabzi in 0.5 steps; pieces for roti, dosa, idli, paratha, thepla, dhokla; glasses or cups for drinks; servings otherwise.
 - confidence: 0 to 1 for the dish identity.
-- Do not estimate calories or nutrients. Do not give health advice.
+- est: ONLY when dish_id is null, your best estimate of nutrition for ONE unit of the dish (typical home/restaurant recipe). Omit est when dish_id is set; the app uses its own database then.
+- Do not give health advice.
 - Only if there is no food or drink in the image at all, return {"dishes":[],"notes":"no food found in this photo"}.`;
 
 const DEMO = {
@@ -98,18 +101,38 @@ function fromDetector(det: DetDish[], detector?: Detector) {
   };
 }
 
-// Map Claude's names onto the NutriX dish table (nutrition is looked up by script, never by the AI).
+// Map the AI's names onto the NutriX dish table (nutrition is looked up by script).
+// Only when a dish is not in the table, the AI's own estimate is used, clearly labelled "AI estimate".
+const UNITS: Unit[] = ["katori", "piece", "glass", "cup", "serving"];
+const num = (v: any, max: number) => Math.max(0, Math.min(max, Math.round((Number(v) || 0) * 10) / 10));
+function aiDish(d: any): Dish | null {
+  const e = d.est;
+  const name = String(d.name ?? "").trim();
+  if (!e || !name) return null;
+  const unit: Unit = UNITS.includes(d.unit) ? d.unit : "serving";
+  const perUnit = { kcal: num(e.kcal, 2000), carbs: num(e.carbs, 300), protein: num(e.protein, 150), fat: num(e.fat, 150), fibre: num(e.fibre, 50), sugar: null };
+  if (!perUnit.kcal && !perUnit.carbs) return null;
+  return {
+    id: "ai_" + name.toLowerCase().replace(/[^a-z0-9]+/g, "_").slice(0, 40),
+    name, aliases: [], unit, unitGrams: num(e.grams_per_unit, 2000) || null, perUnit,
+    source: "AI estimate", sourceCode: "AI", sourceName: name, cuisine: "AI estimate", checked: false,
+  };
+}
+
 function normalise(r: any) {
   const dishes = (r.dishes ?? []).map((d: any) => {
     const byId = DISHES.find((x) => x.id === d.dish_id);
     const m = byId ?? matchDish(String(d.name ?? ""));
+    const custom = m ? null : aiDish(d);
+    const dish = m ?? custom;
     return {
       aiName: String(d.name ?? ""),
-      dishId: m?.id ?? null,
-      name: m?.name ?? String(d.name ?? "Unknown"),
-      portion: clampPortion(Number(d.portion) || 1, m?.unit ?? String(d.unit ?? "katori")),
+      dishId: dish?.id ?? null,
+      name: dish?.name ?? String(d.name ?? "Unknown"),
+      portion: clampPortion(Number(d.portion) || 1, dish?.unit ?? String(d.unit ?? "katori")),
       confidence: Math.max(0, Math.min(1, Number(d.confidence) || 0.5)),
-      matched: !!m,
+      matched: !!dish,
+      custom: custom ?? undefined,
       via: r.demo ? "demo" : "ai",
     };
   });

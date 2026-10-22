@@ -40,7 +40,13 @@ export const DISH_BY_ID: Record<string, Dish> = Object.fromEntries(DISHES.map((d
 export const EVERYDAY = DISHES.filter((d) => d.cuisine === "Everyday Indian");
 export const REFERENCE = DISHES.filter((d) => d.source.startsWith("Reference"));
 export const REGIONAL = DISHES.filter((d) => d.source.startsWith("Regional"));
-export const sourceLabel = (d: Dish) => (d.source === "INDB" ? `INDB ${d.sourceCode}` : d.source.startsWith("Reference") ? "reference estimate" : "regional estimate");
+export const sourceLabel = (d: Dish) =>
+  d.source === "INDB" ? `INDB ${d.sourceCode}` : d.source.startsWith("Reference") ? "reference estimate" : d.source === "AI estimate" ? "AI estimate – check" : "regional estimate";
+
+/** Add an AI-estimated dish so the rest of the app (nutrition, load, charts) can use it. Client-side only. */
+export function registerDish(d: Dish) {
+  if (!DISH_BY_ID[d.id]) DISH_BY_ID[d.id] = d;
+}
 
 /** Search dishes by name or alias. Everyday dishes rank first, then names that start with the query. */
 const normAll = (s: string) => s.toLowerCase().replace(/[^a-z ]/g, " ").replace(/\s+/g, " ").trim();
@@ -79,7 +85,31 @@ export function matchDish(name: string): Dish | null {
       if (na.length >= 3 && (n.includes(na) || na.includes(n)) && (!best || na.length > best.len)) best = { d, len: na.length };
     }
   }
-  return best?.d ?? null;
+  return best?.d ?? fuzzyMatch(name);
+}
+
+const STOP = new Set(["vegetable", "veg", "veggie", "with", "and", "the", "a", "of", "in", "style", "homemade", "home", "made", "fresh", "plain", "indian", "fried", "mixed", "mix"]);
+const tokens = (s: string) => new Set(s.toLowerCase().replace(/\(.*?\)/g, " ").replace(/[^a-z ]/g, " ").split(/\s+/).filter((w) => w.length > 1 && !STOP.has(w)));
+
+/** Word-overlap match against the whole table (Jaccard ≥ 0.5). Everyday and reference dishes win ties. */
+export function fuzzyMatch(name: string): Dish | null {
+  const q = tokens(name);
+  if (!q.size) return null;
+  let best: { d: Dish; s: number } | null = null;
+  for (const d of DISHES) {
+    for (const cand of [d.name, d.sourceName, ...d.aliases]) {
+      const c = tokens(cand);
+      if (!c.size) continue;
+      let inter = 0;
+      for (const w of q) if (c.has(w)) inter++;
+      if (!inter) continue;
+      let sc = inter / (q.size + c.size - inter);
+      if (d.cuisine === "Everyday Indian") sc += 0.05;
+      else if (d.source.startsWith("Reference")) sc += 0.03;
+      if (!best || sc > best.s) best = { d, s: sc };
+    }
+  }
+  return best && best.s >= 0.5 ? best.d : null;
 }
 
 export function nutritionFor(dishId: string, portion: number) {
