@@ -161,7 +161,7 @@ export function suggestions(items: Pick<MealItem, "dishId" | "portion" | "name">
   if (smaller < topItem.portion) {
     const next = valid.map((i) => (i.dishId === top.dishId ? { ...i, portion: smaller } : i));
     if (!has("salad")) next.push({ dishId: "salad", portion: 1, name: DISH_BY_ID.salad.name });
-    push(`${topDish.unit === "piece" ? "One less" : "½ katori less"} ${topDish.name.toLowerCase()}, add a salad`, `${topDish.name} gives ${Math.round(top.share * 100)}% of this meal's load.`, next);
+    push(`Swap ${topDish.unit === "piece" ? "1" : "½ katori of"} ${topDish.name.toLowerCase()} for a katori of salad`, `${topDish.name} gives ${Math.round(top.share * 100)}% of this meal's load; the salad keeps the plate just as full.`, next);
   }
   // 2. Add protein/fibre to the plate (slows the rise)
   for (const id of ADD_CANDIDATES) {

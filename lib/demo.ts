@@ -48,7 +48,7 @@ const SNACKS: Plan[] = [
  *  Their glucose responds ≈ 2.1 mg/dL per unit of meal glucose load + noise, so the personal model can learn it.
  *  About 1 in 6 meals has no 2-hour reading (real people miss some). */
 export async function seedDemoWeek() {
-  await saveUser(DEMO_USER);
+  await saveUser({ ...DEMO_USER, consentAt: new Date().toISOString(), role: "participant" });
   const now = new Date();
   let seed = 7;
   const rand = () => ((seed = (seed * 9301 + 49297) % 233280) / 233280);
@@ -62,6 +62,7 @@ export async function seedDemoWeek() {
     const day: Plan[] = [pick(BREAKFASTS), pick(LUNCHES), pick(DINNERS)];
     if (rand() < 0.35) day.splice(2, 0, pick(SNACKS));
     const fasting = 100 + rand() * 22;
+    const badSleep = rand() < 0.15;
     for (const plan of day) {
       const t = new Date(now);
       t.setDate(now.getDate() - d);
@@ -81,13 +82,20 @@ export async function seedDemoWeek() {
         },
         { kcal: 0, carbs: 0, protein: 0, fat: 0, fibre: 0 }
       );
-      meals.push({ id: uid(), userId: DEMO_USER.id, eatenAt: t.toISOString(), items, photo: null, totals, source: "manual", logSeconds: Math.round(20 + rand() * 40), createdAt: stamp });
+      // Context tags with built-in effects for Person 1 (so "What helps you" has something to find)
+      const tags: string[] = [];
+      let tagEffect = 0;
+      if (plan.hour >= 19 && rand() < 0.35) { tags.push("walk"); tagEffect -= 15; }
+      if (plan.hour >= 12 && plan.hour < 16 && rand() < 0.3) { tags.push("salad_first"); tagEffect -= 8; }
+      if (plan.hour < 11 && badSleep) { tags.push("poor_sleep"); tagEffect += 12; }
+      if (plan.hour < 11 && rand() < 0.5) tags.push("meds");
+      meals.push({ id: uid(), userId: DEMO_USER.id, eatenAt: t.toISOString(), items, photo: null, totals, source: "manual", tags, logSeconds: Math.round(20 + rand() * 40), createdAt: stamp });
 
       const pre = fasting + (plan.hour > 11 ? 8 + rand() * 12 : rand() * 6);
       readings.push(reading(new Date(t.getTime() - 10 * 60000), pre));
       const peakT = new Date(t.getTime() + (70 + rand() * 50) * 60000);
       if (peakT > now || rand() < 0.16) continue; // missed / not yet due
-      const rise = 2.1 * loadForItems(items).gl + 6 + (rand() * 18 - 9);
+      const rise = 2.1 * loadForItems(items).gl + 6 + tagEffect + (rand() * 18 - 9);
       readings.push(reading(peakT, pre + Math.max(5, rise)));
     }
   }

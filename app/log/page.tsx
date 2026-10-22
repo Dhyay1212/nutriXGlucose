@@ -9,6 +9,8 @@ import { resizeImage } from "@/lib/image";
 import { listMeals, listReadings, saveMeal, uid } from "@/lib/store";
 import { BAND_LABEL, calibrate, curve, loadForItems, MIN_CAL, predictRise, suggestions, type Calibration } from "@/lib/impact";
 import { BandChip, CurveChart, LoadMeter, MacroBar } from "@/components/Viz";
+import NutritionPanel from "@/components/NutritionPanel";
+import { listExperiments, TAG_BY_ID, TAGS, type Experiment } from "@/lib/tags";
 import { fromLocalInput, toLocalInput } from "@/lib/format";
 import type { MealItem } from "@/lib/types";
 
@@ -35,10 +37,30 @@ function LogMeal() {
 
   const [detInfo, setDetInfo] = useState<string | null>(null);
   const [cal, setCal] = useState<Calibration | null>(null);
+  const [tags, setTags] = useState<string[]>([]);
+  const [recent, setRecent] = useState<{ key: string; label: string; items: MealItem[] }[]>([]);
+  const [exps, setExps] = useState<Experiment[]>([]);
+  const toggleTag = (id: string) => setTags((t) => (t.includes(id) ? t.filter((x) => x !== id) : [...t, id]));
   useEffect(() => { started.current = Date.now(); preloadYolo(); }, []);
   useEffect(() => {
     if (!user) return;
-    Promise.all([listMeals(user.id), listReadings(user.id)]).then(([m, r]) => setCal(calibrate(m, r))).catch(() => {});
+    Promise.all([listMeals(user.id), listReadings(user.id)]).then(([m, r]) => {
+      setCal(calibrate(m, r));
+      // Recent plates for one-tap re-logging (unique combinations, newest first)
+      const seen = new Set<string>();
+      const rec: { key: string; label: string; items: MealItem[] }[] = [];
+      for (const meal of m) {
+        const k = meal.items.map((i) => `${i.dishId}:${i.portion}`).sort().join("|");
+        if (!k || seen.has(k)) continue;
+        seen.add(k);
+        rec.push({ key: k, label: meal.items.map((i) => i.name).join(" + "), items: meal.items });
+        if (rec.length >= 6) break;
+      }
+      setRecent(rec);
+    }).catch(() => {});
+    const ex = listExperiments(user.id);
+    setExps(ex);
+    setTags((t) => [...new Set([...t, ...ex.map((e) => e.tagId)])]); // pre-tick changes the person is trying
   }, [user?.id]);
 
   async function onFile(f: File | undefined) {
@@ -118,6 +140,7 @@ function LogMeal() {
         totals,
         logSeconds: Math.round((Date.now() - started.current) / 1000),
         source: photo ? "photo" : "manual",
+        tags,
         createdAt: new Date().toISOString(),
       });
       router.push("/");
@@ -145,6 +168,19 @@ function LogMeal() {
         {err && <div className="card error">{err}</div>}
         {!items && !busy && (
           <button className="btn ghost" onClick={() => setItems([{ key: uid(), dishId: "", name: "", portion: 1, matched: false }])}>Log without a photo</button>
+        )}
+        {!items && !busy && recent.length > 0 && (
+          <div>
+            <div className="tiny muted" style={{ marginBottom: 6 }}>Ate the same again? One tap:</div>
+            <div className="chips">
+              {recent.map((r) => (
+                <button key={r.key} className="chip" style={{ maxWidth: "100%", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
+                  onClick={() => setItems(r.items.map((i) => ({ key: uid(), dishId: i.dishId, name: i.name, portion: i.portion, matched: true, custom: i.custom })))}>
+                  ↻ {r.label}
+                </button>
+              ))}
+            </div>
+          </div>
         )}
       </div>
 
@@ -228,6 +264,7 @@ function LogMeal() {
             )}
 
             <MacroBar carbs={L.carbs} protein={L.protein} fat={L.fat} />
+            <NutritionPanel items={valid} />
 
             {sugg.length > 0 && (
               <div>
@@ -255,6 +292,19 @@ function LogMeal() {
         <div className="card">
           <div className="stack">
             <label>When did you eat?<input type="datetime-local" value={when} onChange={(e) => setWhen(e.target.value)} /></label>
+            <div>
+              <div className="tiny muted" style={{ marginBottom: 6 }}>Anything about this meal? (helps NutriX learn what changes your rise)</div>
+              {exps.length > 0 && (
+                <div className="tiny" style={{ marginBottom: 6, color: "var(--brand)" }}>
+                  You’re trying: {exps.map((e) => `${TAG_BY_ID[e.tagId]?.icon} ${TAG_BY_ID[e.tagId]?.label}`).join(", ")}. Untick if you didn’t do it this time.
+                </div>
+              )}
+              <div className="chips">
+                {TAGS.map((t) => (
+                  <button key={t.id} type="button" className={"chip" + (tags.includes(t.id) ? " on" : "")} onClick={() => toggleTag(t.id)}>{t.icon} {t.label}</button>
+                ))}
+              </div>
+            </div>
             <div className="stat-grid">
               <div className="stat flat"><b>{totals.carbs} g</b><span>carbs</span></div>
               <div className="stat flat"><b>{totals.kcal}</b><span>kcal</span></div>

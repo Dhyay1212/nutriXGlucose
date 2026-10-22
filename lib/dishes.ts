@@ -32,6 +32,7 @@ export interface Dish {
   mealType?: string;
   dietaryTag?: string;
   servingNote?: string | null;
+  micros?: Record<string, number>; // per unit; only on AI-estimated dishes (INDB micros load from public/data/micros.json)
   checked: boolean;
 }
 

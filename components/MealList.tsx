@@ -5,6 +5,7 @@ import { DISH_BY_ID } from "@/lib/dishes";
 import { fmtTime, itemPortionLabel } from "@/lib/format";
 import { mealLoad } from "@/lib/impact";
 import { BandChip } from "./Viz";
+import { TAG_BY_ID } from "@/lib/tags";
 
 export default function MealList({ meals, readings, onDelete }: { meals: Meal[]; readings: Reading[]; onDelete?: (id: string) => void }) {
   if (!meals.length) return <p className="muted">No meals logged yet. Tap the camera button to snap your first plate.</p>;
@@ -22,6 +23,7 @@ export default function MealList({ meals, readings, onDelete }: { meals: Meal[];
               <div className="row" style={{ gap: 6, marginTop: 4 }}>
                 <BandChip gl={load.gl} label={`Load ${Math.round(load.gl)}`} />
                 <span className="tiny muted">{fmtTime(m.eatenAt)}</span>
+                {(m.tags ?? []).length > 0 && <span className="tiny" title={(m.tags ?? []).map((t) => TAG_BY_ID[t]?.label).join(", ")}>{(m.tags ?? []).map((t) => TAG_BY_ID[t]?.icon).join(" ")}</span>}
                 {onDelete && <button className="linkbtn" onClick={() => confirm("Delete this meal?") && onDelete(m.id)} aria-label="Delete meal">Delete</button>}
               </div>
             </div>

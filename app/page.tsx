@@ -5,7 +5,9 @@ import UserProvider, { useUser } from "@/components/UserProvider";
 import UserSwitch from "@/components/UserSwitch";
 import MealList from "@/components/MealList";
 import { BandChip, DailyLoadChart, MacroBar, Ring } from "@/components/Viz";
-import { deleteMeal, listMeals, listReadings, storageMode } from "@/lib/store";
+import NutritionPanel from "@/components/NutritionPanel";
+import { deleteMeal, listMeals, listReadings, saveMeal, storageMode } from "@/lib/store";
+import { fmtTime } from "@/lib/format";
 import { inLastWeek, riseForMeal } from "@/lib/glucose";
 import { BAND_LABEL, bandFor, calibrate, MIN_CAL, mealLoad } from "@/lib/impact";
 import type { Meal, Reading } from "@/lib/types";
@@ -52,6 +54,20 @@ function Home() {
   const avg = wkReadings.length ? Math.round(wkReadings.reduce((s, r) => s + r.mgdl, 0) / wkReadings.length) : null;
 
   const cal = calibrate(meals, readings);
+
+  // Logging streak: consecutive days with at least one meal, ending today (or yesterday if nothing yet today)
+  let streak = 0;
+  for (let i = todayMeals.length ? 0 : 1; i < 365; i++) {
+    const d = new Date(now);
+    d.setDate(now.getDate() - i);
+    if (meals.some((m) => sameDay(new Date(m.eatenAt), d))) streak++;
+    else break;
+  }
+  // 2-hour readings due: meals eaten 30–180 min ago with no post-meal reading yet
+  const due = meals.filter((m) => {
+    const mins = (now.getTime() - new Date(m.eatenAt).getTime()) / 60000;
+    return mins >= 30 && mins <= 180 && riseForMeal(m, readings).peak == null;
+  });
   const latest = meals.find((m) => riseForMeal(m, readings).rise != null);
   const latestRise = latest ? riseForMeal(latest, readings) : null;
 
@@ -74,6 +90,21 @@ function Home() {
           </div>
         </div>
       </section>
+
+      {due.map((m) => {
+        const mins = Math.round((now.getTime() - new Date(m.eatenAt).getTime()) / 60000);
+        const walked = (m.tags ?? []).includes("walk");
+        return (
+          <section className="card warn" key={m.id}>
+            <div style={{ fontWeight: 650 }}>⏰ {mins >= 100 ? "2-hour reading due now" : `2-hour reading due in ~${120 - mins} min`}</div>
+            <div className="tiny muted" style={{ margin: "2px 0 8px" }}>{m.items.map((i) => i.name).join(", ")} · eaten {fmtTime(m.eatenAt)}</div>
+            <div className="row">
+              <Link className="btn small" href="/glucose">Add reading</Link>
+              <button className="btn ghost small" disabled={walked} onClick={async () => { await saveMeal({ ...m, tags: [...(m.tags ?? []), "walk"] }); load(); }}>{walked ? "🚶 Walk logged" : "🚶 I walked after"}</button>
+            </div>
+          </section>
+        );
+      })}
 
       {latest && latestRise && (
         <section className="card">
@@ -100,6 +131,7 @@ function Home() {
       </section>
 
       <div className="stat-grid">
+        <div className="stat"><b>🔥 {streak}</b><span>day logging streak</span></div>
         <div className="stat"><b>{(week.length / loggedDays).toFixed(1)}</b><span>meals logged / day</span></div>
         <div className="stat"><b>{week.length}</b><span>meals this week</span></div>
         <div className="stat"><b>{week.filter((m) => riseForMeal(m, readings).rise != null).length}</b><span>with a measured rise</span></div>
@@ -113,6 +145,7 @@ function Home() {
       <section className="card">
         <div className="card-head"><h2>{dayWord}’s plate</h2><span className="tiny muted">{macros.c + macros.p + macros.f ? `${macros.c} g carbs` : ""}</span></div>
         <MacroBar carbs={macros.c} protein={macros.p} fat={macros.f} />
+        {today.length > 0 && <div style={{ marginTop: 12 }}><NutritionPanel items={today.flatMap((m) => m.items)} title={`${dayWord}’s full nutrition`} /></div>}
       </section>
 
       <section className="card">

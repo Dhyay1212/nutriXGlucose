@@ -2,12 +2,13 @@
 import { useEffect, useState } from "react";
 import UserProvider, { useUser } from "@/components/UserProvider";
 import { DishRiseChart } from "@/components/Charts";
-import { MealTimeBars, ScatterFit } from "@/components/Viz";
-import { listMeals, listNotes, listReadings, saveNote, uid } from "@/lib/store";
+import { EffectBars, MealTimeBars, ScatterFit } from "@/components/Viz";
+import { experimentProgress, listExperiments, startExperiment, stopExperiment, tagEffects, TAG_BY_ID, TAGS, type Experiment } from "@/lib/tags";
+import { listEducatorNotes, listMeals, listNotes, listReadings, saveNote, uid } from "@/lib/store";
 import { dishStats, inLastDays, inLastWeek, riseForMeal, startOfWeek, MIN_INSTANCES } from "@/lib/glucose";
 import { calibrate, MIN_CAL } from "@/lib/impact";
 import { fmtTime } from "@/lib/format";
-import type { Meal, Note, Reading } from "@/lib/types";
+import type { EducatorNote, Meal, Note, Reading } from "@/lib/types";
 
 export default function Page() {
   return <UserProvider><Insights /></UserProvider>;
@@ -26,6 +27,9 @@ function Insights() {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [days, setDays] = useState<7 | 30>(7);
+  const [exps, setExps] = useState<Experiment[]>([]);
+  const [enotes, setEnotes] = useState<EducatorNote[]>([]);
+  useEffect(() => { if (user) setExps(listExperiments(user.id)); }, [user?.id]);
 
   const load = async () => {
     if (!user) return;
@@ -33,6 +37,7 @@ function Insights() {
     setMeals(m);
     setReadings(r);
     setNotes(n);
+    setEnotes(await listEducatorNotes(user.id).catch(() => []));
   };
   useEffect(() => { load(); }, [user?.id]);
 
@@ -51,6 +56,8 @@ function Insights() {
     ? cal.points.map((p) => ({ ...p, diff: Math.round(p.rise - cal.k! * p.gl) })).sort((a, b) => Math.abs(b.diff) - Math.abs(a.diff)).slice(0, 3)
     : [];
   const mealById = new Map(meals.map((m) => [m.id, m]));
+  const effects = tagEffects(meals, readings, cal);
+  const tried = new Set(effects.map((e) => e.tag.id));
 
   async function generate() {
     if (!user) return;
@@ -82,6 +89,12 @@ function Insights() {
           {([7, 30] as const).map((d) => <button key={d} className={"chip" + (days === d ? " on" : "")} onClick={() => setDays(d)}>Last {d} days</button>)}
         </div>
       </div>
+      {enotes.length > 0 && (
+        <div className="card">
+          <h2>From your diabetes educator</h2>
+          {enotes.slice(0, 3).map((n) => <div key={n.id} className="note" style={{ marginTop: 8 }}><div className="tiny muted">{n.author} · {fmtTime(n.createdAt)}</div>{n.text}</div>)}
+        </div>
+      )}
 
       <section className="card">
         <div className="card-head"><h2>How your body responds to load</h2>{cal.ready && <span className="pill">{cal.n} meals</span>}</div>
@@ -91,6 +104,43 @@ function Insights() {
           <p style={{ marginTop: 0 }}>Measure {MIN_CAL - cal.n} more meal{MIN_CAL - cal.n === 1 ? "" : "s"} to unlock your personal line. Each dot is a meal with a reading before and ~2 h after.</p>
         )}
         <ScatterFit cal={cal} />
+      </section>
+
+      <section className="card">
+        <div className="card-head"><h2>What helps you</h2>{effects.length > 0 && <span className="pill">from your readings</span>}</div>
+        {effects.length > 0 ? (
+          <>
+            <p className="tiny muted" style={{ marginTop: 0 }}>Each bar compares meals with that habit to your usual rise for the same load. Green = smaller rise than usual.</p>
+            <EffectBars rows={effects.map((e) => ({ label: `${e.tag.icon} ${e.tag.label}`, effect: e.effect, n: e.withN, strength: e.strength }))} />
+          </>
+        ) : (
+          <p className="tiny muted" style={{ marginTop: 0 }}>{cal.ready ? "Tag your meals (walked after, salad first, slept badly…) and NutriX will show which habits change your rise." : "Unlocks after your personal model is ready and a few meals are tagged."}</p>
+        )}
+
+        <h3>Try a small experiment</h3>
+        {exps.map((e) => {
+          const t = TAG_BY_ID[e.tagId];
+          const p = experimentProgress(e, meals, readings);
+          const eff = effects.find((x) => x.tag.id === e.tagId);
+          return (
+            <div className="sugg" key={e.tagId}>
+              <div style={{ minWidth: 0 }}>
+                <div style={{ fontWeight: 650 }}>{t?.icon} {t?.label}</div>
+                <div className="tiny muted">{p.measured} of {e.target} measured tries{eff ? ` · so far ${eff.effect > 0 ? "+" : ""}${eff.effect} mg/dL vs usual` : ""}</div>
+                <div className="progress" style={{ marginTop: 6 }}><span style={{ width: `${Math.min(100, (p.measured / e.target) * 100)}%` }} /></div>
+              </div>
+              <button className="btn ghost small" onClick={() => { stopExperiment(user!.id, e.tagId); setExps(listExperiments(user!.id)); }}>{p.measured >= e.target ? "Done" : "Stop"}</button>
+            </div>
+          );
+        })}
+        <div className="chips" style={{ marginTop: 8 }}>
+          {TAGS.filter((t) => t.kind === "change" && !exps.some((e) => e.tagId === t.id)).map((t) => (
+            <button key={t.id} className="chip" title={t.tip} onClick={() => { startExperiment(user!.id, t.id); setExps(listExperiments(user!.id)); }}>
+              + {t.icon} {t.label}{tried.has(t.id) ? " (again)" : ""}
+            </button>
+          ))}
+        </div>
+        <p className="tiny muted" style={{ margin: "6px 0 0" }}>Pick one change, do it at 3 measured meals, and NutriX compares those rises with your usual. Changes only add or swap; nothing is off-limits.</p>
       </section>
 
       {surprises.length > 0 && (

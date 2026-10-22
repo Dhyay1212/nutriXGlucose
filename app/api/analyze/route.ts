@@ -8,7 +8,9 @@ export const maxDuration = 60;
 const SYSTEM = `You identify every food and drink in a meal photo. Most photos are Indian / South Asian home meals, but any cuisine counts (pizza, pasta, burgers, Chinese, desserts, packaged snacks…).
 Return ONLY JSON in this shape:
 {"dishes":[{"name":string,"dish_id":string|null,"portion":number,"unit":"katori"|"piece"|"glass"|"cup"|"serving","confidence":number,
-  "est":{"grams":number,"kcal":number,"carbs":number,"protein":number,"fat":number,"fibre":number}}],"notes":string}
+  "est":{"grams":number,"kcal":number,"carbs":number,"protein":number,"fat":number,"fibre":number,
+         "sugar":number,"sat_fat":number,"cholesterol_mg":number,"sodium_mg":number,"potassium_mg":number,"calcium_mg":number,
+         "iron_mg":number,"magnesium_mg":number,"vit_a_ug":number,"vit_c_mg":number,"folate_ug":number}}],"notes":string}
 
 Rules:
 - List every separate dish you can see (thalis often have 4-6). Include small sides like raita, curd and salad.
@@ -107,11 +109,18 @@ function fromDetector(det: DetDish[], detector?: Detector) {
 // the AI estimate is used, clearly labelled.
 const UNITS: Unit[] = ["katori", "piece", "glass", "cup", "serving"];
 const num = (v: any, max: number) => Math.max(0, Math.min(max, Math.round((Number(v) || 0) * 10) / 10));
-type Est = { grams: number; kcal: number; carbs: number; protein: number; fat: number; fibre: number };
+type Est = { grams: number; kcal: number; carbs: number; protein: number; fat: number; fibre: number; micros: Record<string, number> };
+const EST_MICROS: [string, string, number][] = [
+  ["sugar", "sugar", 500], ["satfat", "sat_fat", 200], ["cholesterol", "cholesterol_mg", 3000], ["sodium", "sodium_mg", 20000],
+  ["potassium", "potassium_mg", 20000], ["calcium", "calcium_mg", 10000], ["iron", "iron_mg", 200], ["magnesium", "magnesium_mg", 5000],
+  ["vitA", "vit_a_ug", 20000], ["vitC", "vit_c_mg", 2000], ["folate", "folate_ug", 5000],
+];
 function readEst(d: any): Est | null {
   const e = d.est;
   if (!e) return null;
-  const est = { grams: num(e.grams ?? e.grams_per_unit, 5000), kcal: num(e.kcal, 5000), carbs: num(e.carbs, 800), protein: num(e.protein, 300), fat: num(e.fat, 300), fibre: num(e.fibre, 80) };
+  const micros: Record<string, number> = {};
+  for (const [key, field, max] of EST_MICROS) if (e[field] != null && !Number.isNaN(Number(e[field]))) micros[key] = num(e[field], max);
+  const est = { grams: num(e.grams ?? e.grams_per_unit, 5000), kcal: num(e.kcal, 5000), carbs: num(e.carbs, 800), protein: num(e.protein, 300), fat: num(e.fat, 300), fibre: num(e.fibre, 80), micros };
   return est.kcal || est.carbs ? est : null;
 }
 function aiDish(name: string, est: Est, ref: Dish | null): Dish {
@@ -121,7 +130,8 @@ function aiDish(name: string, est: Est, ref: Dish | null): Dish {
     aliases: ref ? [ref.name, ...ref.aliases] : [], // keeps the INDB dish type for the GI category
     unit: "serving",
     unitGrams: est.grams || null,
-    perUnit: { kcal: est.kcal, carbs: est.carbs, protein: est.protein, fat: est.fat, fibre: est.fibre, sugar: null },
+    perUnit: { kcal: est.kcal, carbs: est.carbs, protein: est.protein, fat: est.fat, fibre: est.fibre, sugar: est.micros.sugar ?? null },
+    micros: est.micros,
     source: "AI estimate",
     sourceCode: ref ? (ref.source === "INDB" ? `INDB ${ref.sourceCode}` : ref.name) : "AI",
     sourceName: ref ? ref.sourceName : name,

@@ -16,6 +16,7 @@ export interface Meal {
   totals: { kcal: number; carbs: number; protein: number; fat: number; fibre: number };
   logSeconds?: number | null; // time from opening the log screen to saving (pilot metric)
   source?: "photo" | "manual";
+  tags?: string[]; // context tags: walk, salad_first, meds, poor_sleep…
   createdAt: string;
 }
 
@@ -38,4 +39,15 @@ export interface Note {
 export interface UserProfile {
   id: string; // pilot ID, e.g. P01
   name: string;
+  consentAt?: string | null; // when the person agreed to the data notice
+  role?: "participant" | "educator";
+  authId?: string | null; // Supabase auth user (when login is on)
+}
+
+export interface EducatorNote {
+  id: string;
+  userId: string; // participant
+  author: string;
+  text: string;
+  createdAt: string;
 }

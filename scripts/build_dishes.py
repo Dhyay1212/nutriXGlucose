@@ -173,6 +173,46 @@ for _, r in reg.iterrows():
                 "sourceName": r["Dish Name"], "cuisine": r["Cuisine"], "mealType": r["Meal Type"],
                 "dietaryTag": r["Dietary Tag"], "checked": False})
 
+# ---- Micronutrients for INDB dishes (lazy-loaded by the app from public/data/micros.json) ----
+# key, INDB column(s), divisor to app unit (mg -> g for fatty acids)
+MICROS = [
+    ("sugar", ["freesugar_g"], 1), ("satfat", ["sfa_mg"], 1000), ("mufa", ["mufa_mg"], 1000), ("pufa", ["pufa_mg"], 1000),
+    ("cholesterol", ["cholesterol_mg"], 1), ("sodium", ["sodium_mg"], 1), ("potassium", ["potassium_mg"], 1),
+    ("calcium", ["calcium_mg"], 1), ("phosphorus", ["phosphorus_mg"], 1), ("magnesium", ["magnesium_mg"], 1),
+    ("iron", ["iron_mg"], 1), ("zinc", ["zinc_mg"], 1), ("copper", ["copper_mg"], 1), ("manganese", ["manganese_mg"], 1),
+    ("selenium", ["selenium_ug"], 1), ("chromium", ["chromium_mg"], 1), ("vitA", ["vita_ug"], 1), ("carotenoids", ["carotenoids_ug"], 1),
+    ("vitD", ["vitd2_ug", "vitd3_ug"], 1), ("vitE", ["vite_mg"], 1), ("vitK", ["vitk1_ug", "vitk2_ug"], 1),
+    ("vitB1", ["vitb1_mg"], 1), ("vitB2", ["vitb2_mg"], 1), ("vitB3", ["vitb3_mg"], 1), ("vitB5", ["vitb5_mg"], 1),
+    ("vitB6", ["vitb6_mg"], 1), ("vitB7", ["vitb7_ug"], 1), ("folate", ["folate_ug"], 1), ("vitC", ["vitc_mg"], 1),
+]
+micro_keys = [k for k, _, _ in MICROS]
+micros = {}
+code_of = {d["id"]: d["sourceCode"] for d in out if d["source"] == "INDB"}
+for d in out:
+    if d["source"] != "INDB": continue
+    r = indb.loc[d["sourceCode"]]
+    vals = []
+    serving_mode = d["unit"] == "piece" and d["id"] in {c[0] for c in CURATED if c[4] == "serving"} or (d["id"].startswith("indb_") and d["unit"] == "piece")
+    for k, cols, div in MICROS:
+        tot = 0.0
+        for c in cols:
+            if serving_mode:
+                v = r.get("unit_serving_" + c)
+            else:
+                v = r.get(c)
+                v = (float(v) * (d["unitGrams"] or 100) / 100) if v == v and v is not None else None
+            try:
+                v = float(v)
+                if v == v: tot += v
+            except Exception:
+                pass
+        vals.append(round(tot / div, 3))
+    micros[d["id"]] = vals
+import os
+os.makedirs("public/data", exist_ok=True)
+json.dump({"keys": micro_keys, "source": "INDB", "values": micros}, open("public/data/micros.json", "w"), separators=(",", ":"))
+print("micronutrients for", len(micros), "INDB dishes,", len(micro_keys), "nutrients")
+
 ids = [d["id"] for d in out]
 assert len(ids) == len(set(ids)), "duplicate ids"
 json.dump(out, open("data/dishes.json", "w"), ensure_ascii=False, separators=(",", ":"))

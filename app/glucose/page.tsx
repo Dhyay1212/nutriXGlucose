@@ -3,7 +3,8 @@ import { useEffect, useState } from "react";
 import UserProvider, { useUser } from "@/components/UserProvider";
 import { GlucoseTimeline } from "@/components/Charts";
 import MealList from "@/components/MealList";
-import { deleteReading, listMeals, listReadings, saveReading, uid } from "@/lib/store";
+import { addReadings, deleteReading, listMeals, listReadings, saveReading, uid } from "@/lib/store";
+import { dedupe, parseGlucoseCsv, type ParseResult } from "@/lib/cgm";
 import { fmtTime, fromLocalInput, toLocalInput } from "@/lib/format";
 import { inLastWeek } from "@/lib/glucose";
 import type { Meal, Reading } from "@/lib/types";
@@ -19,6 +20,29 @@ function Glucose() {
   const [mgdl, setMgdl] = useState("");
   const [when, setWhen] = useState(toLocalInput());
   const [err, setErr] = useState<string | null>(null);
+  const [csv, setCsv] = useState<{ name: string; text: string; res: ParseResult; fresh: number } | null>(null);
+  const [csvMsg, setCsvMsg] = useState<string | null>(null);
+
+  function readCsv(f: File | undefined, dayFirst?: boolean, textIn?: string, nameIn?: string) {
+    setCsvMsg(null);
+    const go = (text: string, name: string) => {
+      try {
+        const res = parseGlucoseCsv(text, dayFirst);
+        setCsv({ name, text, res, fresh: dedupe(res.readings, readings).length });
+      } catch (e: any) { setCsv(null); setCsvMsg(e.message); }
+    };
+    if (textIn != null) return go(textIn, nameIn ?? "file");
+    if (!f) return;
+    f.text().then((t) => go(t, f.name));
+  }
+  async function importCsv() {
+    if (!user || !csv) return;
+    const fresh = dedupe(csv.res.readings, readings);
+    await addReadings(fresh.map((r) => ({ id: uid(), userId: user.id, takenAt: r.takenAt, mgdl: r.mgdl, createdAt: new Date().toISOString() })));
+    setCsvMsg(`Imported ${fresh.length} readings. Meals in that period now show their measured rise.`);
+    setCsv(null);
+    load();
+  }
 
   const load = async () => {
     if (!user) return;
@@ -64,6 +88,26 @@ function Glucose() {
           <button className="btn" style={{ alignSelf: "end" }}>Add reading</button>
         </form>
         {err && <p style={{ color: "var(--bad)" }}>{err}</p>}
+      </div>
+
+      <div className="card">
+        <div className="card-head"><h2>Import from a CGM or meter</h2><span className="tiny muted">CSV</span></div>
+        <p className="tiny muted" style={{ marginTop: 0 }}>FreeStyle Libre: LibreView → Glucose History → Download. Dexcom: Clarity → Export. Or any CSV with a time and a glucose column (mg/dL or mmol/L).</p>
+        <input type="file" accept=".csv,text/csv,.txt" onChange={(e) => readCsv(e.target.files?.[0])} />
+        {csv && (
+          <div className="stack" style={{ marginTop: 10 }}>
+            <div className="stat flat">
+              <b style={{ fontSize: "1.1rem" }}>{csv.res.readings.length} readings · {csv.res.format}</b>
+              <span>{csv.res.from && new Date(csv.res.from).toLocaleString("en-IN")} → {csv.res.to && new Date(csv.res.to).toLocaleString("en-IN")} · {csv.res.unit}{csv.res.unit === "mmol/L" ? " (converted to mg/dL)" : ""} · {csv.fresh} new, {csv.res.readings.length - csv.fresh} already here{csv.res.skipped ? ` · ${csv.res.skipped} rows skipped` : ""}</span>
+            </div>
+            <label className="row" style={{ display: "flex", gap: 8, alignItems: "center" }}>
+              <input type="checkbox" checked={csv.res.dayFirst} onChange={(e) => readCsv(undefined, e.target.checked, csv.text, csv.name)} />
+              Dates are day-first (DD-MM-YYYY)
+            </label>
+            <button className="btn" disabled={!csv.fresh} onClick={importCsv}>Import {csv.fresh} readings</button>
+          </div>
+        )}
+        {csvMsg && <p className="tiny" style={{ marginBottom: 0 }}>{csvMsg}</p>}
       </div>
 
       <div className="card">
