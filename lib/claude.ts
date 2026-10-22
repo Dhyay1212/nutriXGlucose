@@ -6,12 +6,23 @@
 
 const OR_DEFAULT_MODELS = ["google/gemini-2.5-flash", "openai/gpt-4o-mini", "anthropic/claude-sonnet-4.5"];
 
-export const hasAI = () => !!(process.env.OPENROUTER_API_KEY || process.env.ANTHROPIC_API_KEY);
+// Use only the first token of a key, so stray text pasted into the env var can't break the header.
+const cleanKey = (v?: string) => (v ?? "").trim().split(/\s+/)[0] || "";
+const orKey = () => cleanKey(process.env.OPENROUTER_API_KEY);
+const anKey = () => cleanKey(process.env.ANTHROPIC_API_KEY);
+/** Remove anything that looks like an API key from text shown to users. */
+export const redact = (t: string) => t.replace(/sk-[A-Za-z0-9_-]{8,}/g, "sk-…").replace(/Bearer\s+\S+/g, "Bearer …");
+
+export const hasAI = () => !!(orKey() || anKey());
 export const hasClaude = hasAI; // backwards-compatible name
-export const aiProvider = () => (process.env.OPENROUTER_API_KEY ? "openrouter" : process.env.ANTHROPIC_API_KEY ? "anthropic" : "none");
+export const aiProvider = () => (orKey() ? "openrouter" : anKey() ? "anthropic" : "none");
 
 export async function callClaude(opts: { system: string; content: any[]; maxTokens?: number }): Promise<string> {
-  return process.env.OPENROUTER_API_KEY ? callOpenRouter(opts) : callAnthropic(opts);
+  try {
+    return await (orKey() ? callOpenRouter(opts) : callAnthropic(opts));
+  } catch (e: any) {
+    throw new Error(redact(String(e?.message ?? e)));
+  }
 }
 
 async function callOpenRouter(opts: { system: string; content: any[]; maxTokens?: number }): Promise<string> {
@@ -26,7 +37,7 @@ async function callOpenRouter(opts: { system: string; content: any[]; maxTokens?
     method: "POST",
     headers: {
       "content-type": "application/json",
-      authorization: `Bearer ${process.env.OPENROUTER_API_KEY}`,
+      authorization: `Bearer ${orKey()}`,
       "HTTP-Referer": process.env.APP_URL || "https://nutrixglucose.vercel.app",
       "X-Title": "NutriX Glucose",
     },
@@ -54,7 +65,7 @@ async function callAnthropic(opts: { system: string; content: any[]; maxTokens?:
     method: "POST",
     headers: {
       "content-type": "application/json",
-      "x-api-key": process.env.ANTHROPIC_API_KEY!,
+      "x-api-key": anKey(),
       "anthropic-version": "2023-06-01",
     },
     body: JSON.stringify({

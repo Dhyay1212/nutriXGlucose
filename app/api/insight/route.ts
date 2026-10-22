@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { callClaude, hasClaude } from "@/lib/claude";
+import { callClaude, hasClaude, redact } from "@/lib/claude";
 import { MIN_INSTANCES, type DishStat } from "@/lib/glucose";
 
 export const runtime = "nodejs";
@@ -76,7 +76,7 @@ ${notEnough.map((s) => `- ${s.name} (${s.timesWithRise})`).join("\n") || "- none
     return NextResponse.json({ text: text.trim() + "\n\n" + DISCLAIMER, guarded });
   } catch (e: any) {
     console.error(e);
-    return NextResponse.json({ error: e.message ?? "Insight failed" }, { status: 500 });
+    return NextResponse.json({ error: redact(String(e?.message ?? "Insight failed")) }, { status: 500 });
   }
 }
 

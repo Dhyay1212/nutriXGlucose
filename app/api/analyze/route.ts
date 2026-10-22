@@ -1,11 +1,11 @@
 import { NextResponse } from "next/server";
 import { DISHES, DISH_BY_ID, EVERYDAY, REFERENCE, matchDish } from "@/lib/dishes";
-import { callClaude, extractJson, hasClaude } from "@/lib/claude";
+import { callClaude, extractJson, hasClaude, redact } from "@/lib/claude";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
 
-const SYSTEM = `You identify dishes on Indian / South Asian meal plates from a photo.
+const SYSTEM = `You identify every food and drink in a meal photo. Most photos are Indian / South Asian home meals, but any cuisine counts (pizza, pasta, burgers, Chinese, desserts, packaged snacks…).
 Return ONLY JSON in this shape:
 {"dishes":[{"name":string,"dish_id":string|null,"portion":number,"unit":"katori"|"piece"|"glass"|"cup"|"serving","confidence":number}],"notes":string}
 
@@ -16,11 +16,11 @@ Everyday dishes (prefer these for home-style plates):
 ${EVERYDAY.map((d) => `${d.id} = ${d.name} [${d.unit}${d.unitGrams ? `, 1 ≈ ${d.unitGrams} g` : ""}]`).join("\n")}
 More common dishes (snacks, sweets, restaurant food):
 ${REFERENCE.map((d) => `${d.id} = ${d.name.replace(" (reference)", "")} [${d.unit}]`).join("\n")}
-If a dish is in neither list, set dish_id = null and give its usual Indian name; the app searches its full database of 1,100+ dishes.
+If a dish is in neither list, set dish_id = null and give its usual name (e.g. "Pizza", "Pasta", "Veg burger"); the app searches its full database of 1,100+ dishes.
 - portion: count of the dish's unit — katoris (standard bowl) for dals, curries, rice and sabzi in 0.5 steps; pieces for roti, dosa, idli, paratha, thepla, dhokla; glasses or cups for drinks; servings otherwise.
 - confidence: 0 to 1 for the dish identity.
 - Do not estimate calories or nutrients. Do not give health advice.
-- If the image is not food, return {"dishes":[],"notes":"not a meal photo"}.`;
+- Only if there is no food or drink in the image at all, return {"dishes":[],"notes":"no food found in this photo"}.`;
 
 const DEMO = {
   demo: true,
@@ -69,7 +69,7 @@ export async function POST(req: Request) {
     return NextResponse.json(normalise(extractJson(text)));
   } catch (e: any) {
     console.error(e);
-    return NextResponse.json({ error: e.message ?? "Analysis failed" }, { status: 500 });
+    return NextResponse.json({ error: redact(String(e?.message ?? "Analysis failed")) }, { status: 500 });
   }
 }
 
