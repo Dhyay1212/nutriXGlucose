@@ -2,7 +2,7 @@
 import type { Meal, Reading } from "@/lib/types";
 import { riseForMeal } from "@/lib/glucose";
 import { DISH_BY_ID } from "@/lib/dishes";
-import { fmtTime, portionLabel } from "@/lib/format";
+import { fmtTime, itemPortionLabel } from "@/lib/format";
 import { mealLoad } from "@/lib/impact";
 import { BandChip } from "./Viz";
 
@@ -18,7 +18,7 @@ export default function MealList({ meals, readings, onDelete }: { meals: Meal[];
           <div className="meal" key={m.id}>
             {m.photo ? <img className="thumb" src={m.photo} alt="" /> : <div className="thumb">🍽️</div>}
             <div style={{ minWidth: 0 }}>
-              <div className="meal-title">{m.items.map((i) => `${i.name} ${portionLabel(i.portion, DISH_BY_ID[i.dishId]?.unit ?? "katori")}`).join(" · ")}</div>
+              <div className="meal-title">{m.items.map((i) => `${i.name} ${itemPortionLabel(i.portion, DISH_BY_ID[i.dishId])}`).join(" · ")}</div>
               <div className="row" style={{ gap: 6, marginTop: 4 }}>
                 <BandChip gl={load.gl} label={`Load ${Math.round(load.gl)}`} />
                 <span className="tiny muted">{fmtTime(m.eatenAt)}</span>

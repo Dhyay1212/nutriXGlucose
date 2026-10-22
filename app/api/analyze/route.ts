@@ -8,7 +8,7 @@ export const maxDuration = 60;
 const SYSTEM = `You identify every food and drink in a meal photo. Most photos are Indian / South Asian home meals, but any cuisine counts (pizza, pasta, burgers, Chinese, desserts, packaged snacks…).
 Return ONLY JSON in this shape:
 {"dishes":[{"name":string,"dish_id":string|null,"portion":number,"unit":"katori"|"piece"|"glass"|"cup"|"serving","confidence":number,
-  "est":{"grams_per_unit":number,"kcal":number,"carbs":number,"protein":number,"fat":number,"fibre":number}}],"notes":string}
+  "est":{"grams":number,"kcal":number,"carbs":number,"protein":number,"fat":number,"fibre":number}}],"notes":string}
 
 Rules:
 - List every separate dish you can see (thalis often have 4-6). Include small sides like raita, curd and salad.
@@ -21,7 +21,7 @@ ${REFERENCE.map((d) => `${d.id} = ${d.name.replace(" (reference)", "")} [${d.uni
 If a dish is in neither list, set dish_id = null and give its usual name (e.g. "Pizza", "Pasta", "Veg burger"); the app searches its full database of 1,100+ dishes.
 - portion: count of the dish's unit — katoris (standard bowl) for dals, curries, rice and sabzi in 0.5 steps; pieces for roti, dosa, idli, paratha, thepla, dhokla; glasses or cups for drinks; servings otherwise.
 - confidence: 0 to 1 for the dish identity.
-- est: ONLY when dish_id is null, your best estimate of nutrition for ONE unit of the dish (typical home/restaurant recipe). Omit est when dish_id is set; the app uses its own database then.
+- est: ALWAYS include it. Your best estimate for the WHOLE amount of that dish visible in the photo: total grams on the plate and the nutrition of that whole amount (typical home/restaurant recipe). A whole medium pizza is ~500-700 g; one roti ~40 g; a katori of dal ~180 g. Account for visible oil, ghee, cheese and sugar. These numbers are shown to the user as your estimate.
 - Do not give health advice.
 - Only if there is no food or drink in the image at all, return {"dishes":[],"notes":"no food found in this photo"}.`;
 
@@ -101,38 +101,73 @@ function fromDetector(det: DetDish[], detector?: Detector) {
   };
 }
 
-// Map the AI's names onto the NutriX dish table (nutrition is looked up by script).
-// Only when a dish is not in the table, the AI's own estimate is used, clearly labelled "AI estimate".
+// Map the AI's names onto the NutriX dish table (database nutrition first).
+// The AI's whole-portion estimate is used to (1) size the portion from grams and (2) catch database rows that
+// are clearly off (carbs per gram more than 2x different). Only then, or when a dish isn't in the table,
+// the AI estimate is used, clearly labelled.
 const UNITS: Unit[] = ["katori", "piece", "glass", "cup", "serving"];
 const num = (v: any, max: number) => Math.max(0, Math.min(max, Math.round((Number(v) || 0) * 10) / 10));
-function aiDish(d: any): Dish | null {
+type Est = { grams: number; kcal: number; carbs: number; protein: number; fat: number; fibre: number };
+function readEst(d: any): Est | null {
   const e = d.est;
-  const name = String(d.name ?? "").trim();
-  if (!e || !name) return null;
-  const unit: Unit = UNITS.includes(d.unit) ? d.unit : "serving";
-  const perUnit = { kcal: num(e.kcal, 2000), carbs: num(e.carbs, 300), protein: num(e.protein, 150), fat: num(e.fat, 150), fibre: num(e.fibre, 50), sugar: null };
-  if (!perUnit.kcal && !perUnit.carbs) return null;
+  if (!e) return null;
+  const est = { grams: num(e.grams ?? e.grams_per_unit, 5000), kcal: num(e.kcal, 5000), carbs: num(e.carbs, 800), protein: num(e.protein, 300), fat: num(e.fat, 300), fibre: num(e.fibre, 80) };
+  return est.kcal || est.carbs ? est : null;
+}
+function aiDish(name: string, est: Est, ref: Dish | null): Dish {
   return {
-    id: "ai_" + name.toLowerCase().replace(/[^a-z0-9]+/g, "_").slice(0, 40),
-    name, aliases: [], unit, unitGrams: num(e.grams_per_unit, 2000) || null, perUnit,
-    source: "AI estimate", sourceCode: "AI", sourceName: name, cuisine: "AI estimate", checked: false,
+    id: "ai_" + name.toLowerCase().replace(/[^a-z0-9]+/g, "_").slice(0, 40) + "_" + Math.round(est.grams),
+    name,
+    aliases: ref ? [ref.name, ...ref.aliases] : [], // keeps the INDB dish type for the GI category
+    unit: "serving",
+    unitGrams: est.grams || null,
+    perUnit: { kcal: est.kcal, carbs: est.carbs, protein: est.protein, fat: est.fat, fibre: est.fibre, sugar: null },
+    source: "AI estimate",
+    sourceCode: ref ? (ref.source === "INDB" ? `INDB ${ref.sourceCode}` : ref.name) : "AI",
+    sourceName: ref ? ref.sourceName : name,
+    cuisine: "AI estimate",
+    checked: false,
   };
 }
+const STEPS: Record<Unit, number[]> = { katori: [0.5, 1, 1.5, 2, 2.5, 3], piece: [1, 2, 3, 4, 5, 6], glass: [0.5, 1, 2], cup: [0.5, 1, 2], serving: [0.5, 1, 1.5, 2, 3, 4, 5, 6] };
+const nearest = (v: number, xs: number[]) => xs.reduce((a, b) => (Math.abs(b - v) < Math.abs(a - v) ? b : a));
 
+// Policy: INDB gives the dish (name, type, GI category); the AI gives the numbers for the portion it sees.
+// Without an AI estimate, INDB values are used for the portion the AI counted.
 function normalise(r: any) {
   const dishes = (r.dishes ?? []).map((d: any) => {
+    const aiName = String(d.name ?? "").trim();
     const byId = DISHES.find((x) => x.id === d.dish_id);
-    const m = byId ?? matchDish(String(d.name ?? ""));
-    const custom = m ? null : aiDish(d);
-    const dish = m ?? custom;
+    const m = byId ?? matchDish(aiName);
+    const est = readEst(d);
+    let dish: Dish | null = m;
+    let custom: Dish | null = null;
+    let portion = Number(d.portion) || 1;
+    let note: string | undefined;
+
+    if (est && est.grams > 0) {
+      custom = aiDish(m?.name ?? aiName, est, m);
+      dish = custom;
+      portion = 1;
+      if (m?.unitGrams) {
+        const dbCarbs = Math.round((m.perUnit.carbs / m.unitGrams) * est.grams);
+        note = `AI estimate for ~${Math.round(est.grams)} g. INDB match: ${m.name}${m.source === "INDB" ? ` (${m.sourceCode})` : ""} would give ${dbCarbs} g carbs for the same weight.`;
+      } else if (m) {
+        note = `AI estimate for ~${Math.round(est.grams)} g. INDB match: ${m.name}.`;
+      } else {
+        note = `AI estimate for ~${Math.round(est.grams)} g. No INDB match.`;
+      }
+    }
+    const unit = dish?.unit ?? (UNITS.includes(d.unit) ? d.unit : "katori");
     return {
-      aiName: String(d.name ?? ""),
+      aiName,
       dishId: dish?.id ?? null,
-      name: dish?.name ?? String(d.name ?? "Unknown"),
-      portion: clampPortion(Number(d.portion) || 1, dish?.unit ?? String(d.unit ?? "katori")),
+      name: dish?.name ?? aiName ?? "Unknown",
+      portion: nearest(Math.max(0.5, portion), STEPS[unit as Unit]),
       confidence: Math.max(0, Math.min(1, Number(d.confidence) || 0.5)),
       matched: !!dish,
       custom: custom ?? undefined,
+      note,
       via: r.demo ? "demo" : "ai",
     };
   });

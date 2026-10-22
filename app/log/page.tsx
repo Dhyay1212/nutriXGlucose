@@ -16,7 +16,7 @@ export default function Page() {
   return <UserProvider><LogMeal /></UserProvider>;
 }
 
-interface Draft extends MealItem { key: string; matched: boolean; via?: string }
+interface Draft extends MealItem { key: string; matched: boolean; via?: string; note?: string }
 
 
 function LogMeal() {
@@ -81,6 +81,7 @@ function LogMeal() {
           confidence: d.confidence,
           matched: d.matched,
           custom: d.custom,
+          note: d.note,
           via: d.via,
         }));
       setItems(list.length ? list : [{ key: uid(), dishId: "", name: "", portion: 1, matched: false }]);
@@ -153,7 +154,7 @@ function LogMeal() {
             <h2 style={{ margin: 0 }}>Check the dishes</h2>
             {demo ? <span className="pill warn">demo result</span> : items.some((i) => i.via === "detector") ? <span className="pill">NutriX detector</span> : null}
           </div>
-          <p className="muted tiny">Fix anything that's wrong, then save. Nutrition comes from the NutriX dish table (Indian Nutrient Databank), not the AI.</p>
+          <p className="muted tiny">Fix anything that's wrong, then save. Numbers are the AI’s estimate for the portion in your photo, matched to an Indian Nutrient Databank (INDB) dish. Dishes you add by search use INDB values.</p>
           {aiNote && !demo && <p className="tiny muted">{aiNote}</p>}
           {detInfo && <p className="tiny muted">{detInfo}</p>}
 
@@ -171,7 +172,7 @@ function LogMeal() {
                   }} />
                   <div className="tiny muted" style={{ marginTop: 4 }}>
                     {it.aiName && <>{it.via === "detector" ? "Detector saw" : "AI saw"} “{it.aiName}”{it.confidence != null && ` · ${Math.round(it.confidence * 100)}% sure`} · </>}
-                    {n && d ? <>{n.grams ? `${n.grams} g · ` : ""}{n.carbs} g carbs · {n.kcal} kcal · <span title={d.sourceName} className={d.source === "AI estimate" ? "pill warn" : undefined}>{sourceLabel(d)}</span></> : <span style={{ color: "var(--bad)" }}>Not in the NutriX table yet: pick the closest dish</span>}
+                    {n && d ? <>{n.grams ? `${n.grams} g · ` : ""}{n.carbs} g carbs · {n.kcal} kcal · <span title={d.sourceName} className={d.source === "AI estimate" ? "pill warn" : undefined}>{sourceLabel(d)}</span>{it.note && <div style={{ color: "var(--accent)", marginTop: 2 }}>{it.note}</div>}</> : <span style={{ color: "var(--bad)" }}>Not in the NutriX table yet: pick the closest dish</span>}
                   </div>
                 </div>
                 <button className="btn danger small" onClick={() => setItems((xs) => xs!.filter((x) => x.key !== it.key))}>Remove</button>

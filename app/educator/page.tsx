@@ -2,7 +2,7 @@
 import { useEffect, useState } from "react";
 import { listMeals, listNotes, listReadings, listUsers } from "@/lib/store";
 import { dishStats, inLastWeek, riseForMeal, MIN_INSTANCES } from "@/lib/glucose";
-import { fmtTime, portionLabel } from "@/lib/format";
+import { fmtTime, itemPortionLabel } from "@/lib/format";
 import { DISH_BY_ID } from "@/lib/dishes";
 import { calibrate, mealLoad } from "@/lib/impact";
 import { BandChip } from "@/components/Viz";
@@ -125,7 +125,7 @@ export default function Educator() {
                         <td>
                           {m.items.map((i, k) => (
                             <div key={k}>
-                              {i.name} · {portionLabel(i.portion, DISH_BY_ID[i.dishId]?.unit ?? "katori")}
+                              {i.name} · {itemPortionLabel(i.portion, DISH_BY_ID[i.dishId])}
                               {i.aiName && i.aiName.toLowerCase() !== i.name.toLowerCase() && <span className="tiny muted"> (AI: {i.aiName})</span>}
                             </div>
                           ))}

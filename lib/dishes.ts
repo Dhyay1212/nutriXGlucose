@@ -41,7 +41,7 @@ export const EVERYDAY = DISHES.filter((d) => d.cuisine === "Everyday Indian");
 export const REFERENCE = DISHES.filter((d) => d.source.startsWith("Reference"));
 export const REGIONAL = DISHES.filter((d) => d.source.startsWith("Regional"));
 export const sourceLabel = (d: Dish) =>
-  d.source === "INDB" ? `INDB ${d.sourceCode}` : d.source.startsWith("Reference") ? "reference estimate" : d.source === "AI estimate" ? "AI estimate – check" : "regional estimate";
+  d.source === "INDB" ? `INDB ${d.sourceCode}` : d.source.startsWith("Reference") ? "reference estimate" : d.source === "AI estimate" ? "AI estimate" : "regional estimate";
 
 /** Add an AI-estimated dish so the rest of the app (nutrition, load, charts) can use it. Client-side only. */
 export function registerDish(d: Dish) {
@@ -131,7 +131,7 @@ export const PORTION_OPTIONS: Record<Unit, number[]> = {
   piece: [1, 2, 3, 4],
   glass: [0.5, 1, 2],
   cup: [0.5, 1, 2],
-  serving: [0.5, 1, 1.5, 2],
+  serving: [0.5, 1, 1.5, 2, 3, 4],
 };
 
 export const UNIT_LABEL: Record<Unit, string> = {

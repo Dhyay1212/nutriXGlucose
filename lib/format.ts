@@ -12,3 +12,7 @@ export const portionLabel = (p: number, unit: string) => {
   const u: Record<string, string> = { katori: "katori", piece: "pc", glass: "glass", cup: "cup", serving: "serving" };
   return `${n} ${u[unit] ?? unit}`;
 };
+
+/** Portion text for a logged item; AI-estimated dishes show their weight. */
+export const itemPortionLabel = (portion: number, dish?: { unit: string; unitGrams: number | null; source: string }) =>
+  dish && dish.source === "AI estimate" && dish.unitGrams ? `~${Math.round(dish.unitGrams * portion)} g` : portionLabel(portion, dish?.unit ?? "katori");
