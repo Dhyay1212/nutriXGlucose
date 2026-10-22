@@ -31,7 +31,7 @@ const DEMO = {
     { name: "Bhindi sabzi", dish_id: "bhindi", portion: 0.5, unit: "katori", confidence: 0.71 },
     { name: "Raita", dish_id: "cucumber_raita", portion: 0.5, unit: "katori", confidence: 0.64 },
   ],
-  notes: "Demo mode: no ANTHROPIC_API_KEY set, so this is a sample thali.",
+  notes: "Demo mode: no AI key set (OPENROUTER_API_KEY or ANTHROPIC_API_KEY), so this is a sample thali.",
 };
 
 type DetDish = { dishId: string; label: string; score: number; count: number };
