@@ -4,6 +4,8 @@ import { listMeals, listNotes, listReadings, listUsers } from "@/lib/store";
 import { dishStats, inLastWeek, riseForMeal, MIN_INSTANCES } from "@/lib/glucose";
 import { fmtTime, portionLabel } from "@/lib/format";
 import { DISH_BY_ID } from "@/lib/dishes";
+import { calibrate, mealLoad } from "@/lib/impact";
+import { BandChip } from "@/components/Viz";
 import type { Meal, Note, Reading, UserProfile } from "@/lib/types";
 
 // Read-only educator view: weekly dish table, AI note and meal photos for each participant.
@@ -39,6 +41,7 @@ export default function Educator() {
       withRise: wk.filter((m) => riseForMeal(m, readings).rise != null).length,
       readings: inLastWeek(readings.filter((r) => r.userId === u.id), (r) => r.takenAt).length,
       avgLog: avg(wk.map((m) => m.logSeconds).filter((x): x is number => typeof x === "number")),
+      k: calibrate(meals.filter((m) => m.userId === u.id), readings).k,
     };
   });
 
@@ -54,7 +57,7 @@ export default function Educator() {
         <div className="scroll-x">
           <table>
             <thead>
-              <tr><th>Participant</th><th>Meals</th><th>Meals/day</th><th>With rise</th><th>Readings</th><th>Avg log time</th><th></th></tr>
+              <tr><th>Participant</th><th>Meals</th><th>Meals/day</th><th>With rise</th><th>Readings</th><th>mg/dL per load</th><th>Avg log time</th><th></th></tr>
             </thead>
             <tbody>
               {overview.map((o) => (
@@ -64,11 +67,12 @@ export default function Educator() {
                   <td>{o.perDay.toFixed(1)}</td>
                   <td>{o.withRise}</td>
                   <td>{o.readings}</td>
+                  <td>{o.k ?? "–"}</td>
                   <td>{o.avgLog != null ? `${o.avgLog}s` : "–"}</td>
                   <td><button className="btn small ghost" onClick={() => setSel(o.u.id)}>View</button></td>
                 </tr>
               ))}
-              {!overview.length && <tr><td colSpan={7} className="muted">No participants yet.</td></tr>}
+              {!overview.length && <tr><td colSpan={8} className="muted">No participants yet.</td></tr>}
             </tbody>
           </table>
         </div>
@@ -110,7 +114,7 @@ export default function Educator() {
             <h2>Meals this week</h2>
             <div className="scroll-x">
               <table>
-                <thead><tr><th>Photo</th><th>When</th><th>Dishes (as confirmed)</th><th>Carbs</th><th>Pre → peak</th><th>Rise</th></tr></thead>
+                <thead><tr><th>Photo</th><th>When</th><th>Dishes (as confirmed)</th><th>Carbs</th><th>Load</th><th>Pre → peak</th><th>Rise</th></tr></thead>
                 <tbody>
                   {um.map((m) => {
                     const r = riseForMeal(m, readings);
@@ -127,6 +131,7 @@ export default function Educator() {
                           ))}
                         </td>
                         <td>{m.totals.carbs} g</td>
+                        <td><BandChip gl={mealLoad(m).gl} label={String(Math.round(mealLoad(m).gl))} /></td>
                         <td>{r.pre ?? "–"} → {r.peak ?? "–"}</td>
                         <td>{r.rise != null ? <b>+{r.rise}</b> : "–"}</td>
                       </tr>

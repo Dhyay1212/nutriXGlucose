@@ -2,6 +2,7 @@
 import { DISH_BY_ID, nutritionFor } from "./dishes";
 import { saveMeal, saveReading, saveUser, uid } from "./store";
 import type { Meal, MealItem } from "./types";
+import { loadForItems } from "./impact";
 
 // A plausible demo week so charts and notes have something to show. Clearly labelled as demo data.
 type Plan = { hour: number; items: [string, number][]; rise: number };
@@ -64,7 +65,9 @@ export async function seedDemoWeek() {
         continue;
       }
       await saveReading({ id: uid(), userId: DEMO_USER.id, takenAt: preT.toISOString(), mgdl: pre, createdAt: new Date().toISOString() });
-      await saveReading({ id: uid(), userId: DEMO_USER.id, takenAt: peakT.toISOString(), mgdl: pre + plan.rise + Math.round(rand() * 10 - 5), createdAt: new Date().toISOString() });
+      // Demo person: rise ≈ 2.1 mg/dL per unit of meal glucose load, plus noise (so the personal model has something to learn).
+      const rise = Math.round(2.1 * loadForItems(items).gl + 6 + (rand() * 16 - 8));
+      await saveReading({ id: uid(), userId: DEMO_USER.id, takenAt: peakT.toISOString(), mgdl: pre + rise, createdAt: new Date().toISOString() });
     }
   }
   return DEMO_USER.id;

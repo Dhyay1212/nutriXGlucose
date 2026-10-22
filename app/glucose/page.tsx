@@ -5,6 +5,7 @@ import { GlucoseTimeline } from "@/components/Charts";
 import MealList from "@/components/MealList";
 import { deleteReading, listMeals, listReadings, saveReading, uid } from "@/lib/store";
 import { fmtTime, fromLocalInput, toLocalInput } from "@/lib/format";
+import { inLastWeek } from "@/lib/glucose";
 import type { Meal, Reading } from "@/lib/types";
 
 export default function Page() {
@@ -38,8 +39,22 @@ function Glucose() {
     load();
   }
 
+  const wk = inLastWeek(readings, (r) => r.takenAt);
+  const inRange = wk.filter((r) => r.mgdl >= 70 && r.mgdl <= 180).length;
+  const above = wk.filter((r) => r.mgdl > 180).length;
+  const below = wk.filter((r) => r.mgdl < 70).length;
+  const avg = wk.length ? Math.round(wk.reduce((s, r) => s + r.mgdl, 0) / wk.length) : null;
+  const pct = (n: number) => (wk.length ? Math.round((n / wk.length) * 100) : 0);
+
   return (
     <main className="wrap">
+      <div className="stat-grid">
+        <div className="stat"><b style={{ color: "var(--good)" }}>{wk.length ? `${pct(inRange)}%` : "–"}</b><span>✓ in range 70–180 (7 d)</span></div>
+        <div className="stat"><b>{avg ?? "–"}</b><span>average mg/dL</span></div>
+        <div className="stat"><b>{wk.length ? `${pct(above)}%` : "–"}</b><span>▲ above 180</span></div>
+        <div className="stat"><b>{wk.length ? `${pct(below)}%` : "–"}</b><span>▼ below 70</span></div>
+      </div>
+      {below > 0 && <div className="card warn tiny">You had {below} reading{below === 1 ? "" : "s"} below 70 mg/dL this week. Follow your hypo plan and tell your doctor or educator.</div>}
       <div className="card">
         <h1>Glucose readings</h1>
         <p className="muted tiny">From your meter or CGM. Add one just before a meal and one about 2 hours after.</p>

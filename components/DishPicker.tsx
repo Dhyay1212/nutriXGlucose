@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
 import { DISH_BY_ID, searchDishes, sourceLabel, UNIT_LABEL } from "@/lib/dishes";
+import { itemLoad } from "@/lib/impact";
 
 /** Type-to-search dish picker over the full NutriX dish table. */
 export default function DishPicker({ value, fallbackName, onPick }: { value: string; fallbackName?: string; onPick: (id: string) => void }) {
@@ -31,7 +32,7 @@ export default function DishPicker({ value, fallbackName, onPick }: { value: str
           {results.map((d) => (
             <button key={d.id} type="button" className="picker-item" onClick={() => { onPick(d.id); setQ(d.name); setOpen(false); }}>
               <span>{d.name}</span>
-              <span className="tiny muted">{UNIT_LABEL[d.unit].toLowerCase()} · {Math.round(d.perUnit.carbs)} g carbs · {sourceLabel(d)}</span>
+              <span className="tiny muted">per {UNIT_LABEL[d.unit].toLowerCase().replace(/s$/, "")}: {Math.round(d.perUnit.carbs)} g carbs · load {Math.round(itemLoad(d.id, 1).gl)} · {sourceLabel(d)}</span>
             </button>
           ))}
         </div>

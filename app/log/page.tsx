@@ -6,7 +6,9 @@ import { DISH_BY_ID, PORTION_OPTIONS, UNIT_LABEL, nutritionFor, sourceLabel } fr
 import DishPicker from "@/components/DishPicker";
 import { detect, preloadYolo, summarise } from "@/lib/yolo";
 import { resizeImage } from "@/lib/image";
-import { saveMeal, uid } from "@/lib/store";
+import { listMeals, listReadings, saveMeal, uid } from "@/lib/store";
+import { BAND_LABEL, calibrate, curve, loadForItems, MIN_CAL, predictRise, suggestions, type Calibration } from "@/lib/impact";
+import { BandChip, CurveChart, LoadMeter, MacroBar } from "@/components/Viz";
 import { fromLocalInput, toLocalInput } from "@/lib/format";
 import type { MealItem } from "@/lib/types";
 
@@ -32,7 +34,12 @@ function LogMeal() {
   const [when, setWhen] = useState(toLocalInput());
 
   const [detInfo, setDetInfo] = useState<string | null>(null);
+  const [cal, setCal] = useState<Calibration | null>(null);
   useEffect(() => { started.current = Date.now(); preloadYolo(); }, []);
+  useEffect(() => {
+    if (!user) return;
+    Promise.all([listMeals(user.id), listReadings(user.id)]).then(([m, r]) => setCal(calibrate(m, r))).catch(() => {});
+  }, [user?.id]);
 
   async function onFile(f: File | undefined) {
     if (!f) return;
@@ -123,7 +130,7 @@ function LogMeal() {
           <img className="preview" src={photo} alt="Your meal" onClick={() => fileRef.current?.click()} />
         ) : (
           <div className="drop" onClick={() => fileRef.current?.click()}>
-            <div style={{ fontSize: "2rem" }}>📷</div>
+            <div className="big"><svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M4 8h3l2-3h6l2 3h3a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1z" /><circle cx="12" cy="13.5" r="3.5" /></svg></div>
             <b>Take or upload a photo of your plate</b>
             <span className="muted tiny">Thalis, dosa, roti-sabzi… we list each dish with a katori portion.</span>
           </div>
@@ -131,7 +138,7 @@ function LogMeal() {
         {busy && <p className="muted">{busy}</p>}
         {err && <div className="card error">{err}</div>}
         {!items && !busy && (
-          <button className="btn ghost" onClick={() => setItems([])}>Log without a photo</button>
+          <button className="btn ghost" onClick={() => setItems([{ key: uid(), dishId: "", name: "", portion: 1, matched: false }])}>Log without a photo</button>
         )}
       </div>
 
@@ -179,17 +186,77 @@ function LogMeal() {
 
           <button className="btn ghost small" style={{ marginTop: 8 }} onClick={() => setItems((xs) => [...xs!, { key: uid(), dishId: "", name: "", portion: 1, matched: false }])}>+ Add a dish</button>
 
-          <hr />
+        </div>
+      )}
+
+      {items && valid.length > 0 && (() => {
+        const L = loadForItems(valid);
+        const pred = cal ? predictRise(L.gl, cal) : null;
+        const c = pred != null ? curve(pred, L.fat, L.protein) : null;
+        const sugg = suggestions(valid);
+        return (
+          <div className="card stack">
+            <div className="card-head" style={{ marginBottom: 0 }}>
+              <h2>Glucose impact</h2>
+              <BandChip gl={L.gl} />
+            </div>
+            <div className="row" style={{ alignItems: "baseline", gap: 8 }}>
+              <b style={{ fontSize: "2rem", lineHeight: 1 }}>{Math.round(L.gl)}</b>
+              <span className="muted tiny">meal glucose load (estimate) · {L.carbs} g carbs, {L.fibre} g fibre</span>
+            </div>
+            <LoadMeter gl={L.gl} />
+            {L.parts.length > 1 && (
+              <div className="tiny muted">Biggest contributor: <b style={{ color: "var(--ink)" }}>{L.parts[0].name}</b> ({Math.round(L.parts[0].share * 100)}% of the load)</div>
+            )}
+
+            {pred != null && c ? (
+              <div>
+                <h3 style={{ margin: "4px 0" }}>Your expected rise: about +{pred} mg/dL</h3>
+                <p className="tiny muted" style={{ margin: "0 0 6px" }}>Predicted from your own {cal!.n} measured meals ({cal!.k} mg/dL per unit of load). Check it with a reading ~2 h after eating.</p>
+                <CurveChart pts={c.pts} peak={pred} tp={c.tp} />
+              </div>
+            ) : (
+              <div className="stat flat">
+                <span>Personal prediction unlocks after {MIN_CAL} measured meals ({cal?.n ?? 0} so far). Add a reading before eating and ~2 h after.</span>
+              </div>
+            )}
+
+            <MacroBar carbs={L.carbs} protein={L.protein} fat={L.fat} />
+
+            {sugg.length > 0 && (
+              <div>
+                <h3 style={{ marginTop: 6 }}>One small change to try</h3>
+                {sugg.map((s, i) => (
+                  <div className="sugg" key={i}>
+                    <div style={{ minWidth: 0 }}>
+                      <div style={{ fontWeight: 650, fontSize: ".92rem" }}>{s.title}</div>
+                      <div className="tiny muted">{s.detail} New load {Math.round(s.gl)}{pred != null && cal?.k ? ` · expected rise ~+${Math.round(cal.k * s.gl)} mg/dL` : ""}.</div>
+                    </div>
+                    <div style={{ textAlign: "right" }}>
+                      <div className="drop-badge">−{s.drop}%</div>
+                      <button className="btn ghost small" onClick={() => setItems(s.items.map((x) => ({ key: uid(), dishId: x.dishId, name: x.name, portion: x.portion, matched: true })))}>Use this</button>
+                    </div>
+                  </div>
+                ))}
+                <p className="tiny muted" style={{ margin: "6px 0 0" }}>Suggestions only add or swap; nothing is off-limits. Not medical advice.</p>
+              </div>
+            )}
+          </div>
+        );
+      })()}
+
+      {items && (
+        <div className="card">
           <div className="stack">
             <label>When did you eat?<input type="datetime-local" value={when} onChange={(e) => setWhen(e.target.value)} /></label>
             <div className="stat-grid">
-              <div className="stat"><b>{totals.carbs} g</b><span>carbs (estimate)</span></div>
-              <div className="stat"><b>{totals.kcal}</b><span>kcal (estimate)</span></div>
-              <div className="stat"><b>{totals.protein} g</b><span>protein</span></div>
-              <div className="stat"><b>{totals.fibre} g</b><span>fibre</span></div>
+              <div className="stat flat"><b>{totals.carbs} g</b><span>carbs</span></div>
+              <div className="stat flat"><b>{totals.kcal}</b><span>kcal</span></div>
+              <div className="stat flat"><b>{totals.protein} g</b><span>protein</span></div>
+              <div className="stat flat"><b>{totals.fibre} g</b><span>fibre</span></div>
             </div>
-            <button className="btn" disabled={!valid.length || !!busy} onClick={save}>Save meal</button>
-            <p className="tiny muted">Tip: add a glucose reading now (before eating) and about 2 hours after to see this meal's effect.</p>
+            <button className="btn block" disabled={!valid.length || !!busy} onClick={save}>Save meal</button>
+            <p className="tiny muted" style={{ margin: 0 }}>Tip: add a glucose reading now (before eating) and about 2 hours after to see this meal’s real effect.</p>
           </div>
         </div>
       )}
