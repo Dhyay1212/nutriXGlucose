@@ -23,7 +23,7 @@ CURATED = [
  ("lemon_rice","Lemon rice","ASC124","katori","per100",GRAIN,["chitranna","pulihora","elumichai sadam"]),
  ("curd_rice","Curd rice","ASC126","katori","per100",GRAIN,["dahi chawal","thayir sadam","daddojanam"]),
  ("veg_biryani","Veg biryani","ASC123","katori","per100",GRAIN,["vegetable biryani","biryani","biriyani"]),
- ("mutton_biryani","Mutton biryani","ASC122","katori","per100",GRAIN,["meat biryani","chicken biryani"]),
+ ("mutton_biryani","Mutton biryani","ASC122","katori","per100",GRAIN,["meat biryani","gosht biryani"]),
  ("veg_khichdi","Vegetable khichdi","ASC487","katori","per100",GRAIN,["khichdi","khichri","dal khichdi"]),
  ("sabudana_khichdi","Sabudana khichdi","OSR099","katori","per100",GRAIN,["sago khichdi"]),
  ("poha","Poha","BFP045","katori","per100",GRAIN,["kanda poha","batata poha","vegetable poha","aval","flattened rice"]),
@@ -93,6 +93,70 @@ for did, name, code, unit, mode, grams, aliases in CURATED:
                 "source": "INDB", "sourceCode": code, "sourceName": r["food_name"], "cuisine": "Everyday Indian",
                 "checked": False})
 
+# ---- All remaining INDB recipes (A to Z) ----
+curated_codes = {c[2] for c in CURATED}
+excluded_fried = []
+BOWL = {"bowl", "small bowl", "curry bowl", "plate", "small plate", "dish", "soup bowl", "large bowl", "big bowl"}
+DRINK = {"glass", "tall glass", "juice glass", "small glass", "cup", "tea cup", "mug", "coffee mug"}
+SKIP = re.compile(r"powder|masala$|baghar|tadka\)|paste|stock|essence|infant", re.I)
+def fnum(x):
+    try:
+        v = float(x); return None if v != v else v
+    except Exception: return None
+for code, r in indb.iterrows():
+    if code in curated_codes or SKIP.search(str(r["food_name"])): continue
+    e100, c100 = fnum(r["energy_kcal"]), fnum(r["carb_g"])
+    if not e100: continue
+    su = str(r["servings_unit"]).strip().lower() if isinstance(r["servings_unit"], str) else ""
+    has_serv = fnum(r["unit_serving_energy_kcal"]) is not None
+    oily = (fnum(r["fat_g"]) or 0) * 9 / e100 > 0.6 and e100 > 350
+    warn = None
+    if oily:
+        excluded_fried.append(code); continue  # INDB counts all frying oil; the reference table covers common fried foods
+    if su in BOWL or not su:
+        unit, g = "katori", GRAIN
+        per = {k: round((fnum(r[c]) or 0) * g / 100, 1) for k, c in NUTS}
+    elif su in DRINK:
+        unit = "glass" if "glass" in su else "cup"
+        g = 250 if unit == "glass" else 150
+        per = {k: round((fnum(r[c]) or 0) * g / 100, 1) for k, c in NUTS}
+    elif has_serv:
+        unit = "piece"
+        per = {k: round(fnum(r["unit_serving_" + c]) or 0, 1) for k, c in NUTS}
+        g = round(fnum(r["unit_serving_carb_g"]) / c100 * 100) if c100 and c100 > 0.5 and fnum(r["unit_serving_carb_g"]) else None
+        if g is None or g > 200:  # INDB "serving" is a whole pie/cake/dish -> use a 100 g serving instead
+            unit, g = "serving", 100
+            per = {k: round((fnum(r[c]) or 0), 1) for k, c in NUTS}
+    else:
+        continue
+    out.append({"id": "indb_" + code.lower(), "name": r["food_name"], "aliases": [], "unit": unit, "unitGrams": g,
+                "perUnit": per, "source": "INDB", "sourceCode": code, "sourceName": r["food_name"],
+                "cuisine": "INDB (all recipes)", "servingNote": su or None, "warning": warn, "checked": False})
+
+# ---- Reference table (98 common dishes, generic per-serving values) ----
+ref_rows = [l.rstrip("\n") for l in open(f"{SRC}/indian_food_nutrition_dataset.csv", encoding="utf-8")][1:]
+for l in ref_rows:
+    if not l.strip(): continue
+    f = l.split(","); diet = f[-1]; fat, carb, prot, cal = [float(x) for x in (f[-2], f[-3], f[-4], f[-5])]
+    rest = f[:-5]; serving = rest[-1].strip(); cat = rest[-2].strip(); name = ",".join(rest[:-2]).strip()
+    if cat == "Spice Mix": continue
+    m = re.match(r"\s*(\d+)\s*([a-zA-Z]+)\s*\((\d+)\s*(g|ml)\)", serving)
+    if not m: continue
+    n, kind, grams = int(m.group(1)), m.group(2).lower(), int(m.group(3))
+    vals = {"kcal": cal, "carbs": carb, "protein": prot, "fat": fat, "fibre": 0.0, "sugar": None}
+    if kind.startswith("piece"):
+        unit, g = "piece", round(grams / n); per = {k: (round(v / n, 1) if v is not None else None) for k, v in vals.items()}
+    elif kind in ("bowl", "plate") or (kind == "cup" and "Rice" in name):
+        unit = "katori"; g = GRAIN if kind == "plate" or "Rice" in name else LIQ
+        per = {k: (round(v * g / grams, 1) if v is not None else None) for k, v in vals.items()}
+    elif kind in ("glass", "cup"):
+        unit, g, per = kind, grams, vals
+    else:
+        unit, g, per = "serving", grams, vals
+    out.append({"id": "ref_" + re.sub(r"[^a-z0-9]+", "_", name.lower()).strip("_"), "name": name + " (reference)", "aliases": [name.lower()],
+                "unit": unit, "unitGrams": g, "perUnit": per, "source": "Reference table (estimate)", "sourceCode": serving,
+                "sourceName": name, "cuisine": "Reference (" + cat + ")", "dietaryTag": diet, "checked": False})
+
 # Regional catalogue (per-serving estimates); drop the duplicate Basundi
 reg = pd.read_csv(f"{SRC}/all_217_regional_recipes_and_ingredients.csv")
 reg = reg.drop_duplicates(subset=["Dish Name"], keep="first")
@@ -111,6 +175,8 @@ for _, r in reg.iterrows():
 
 ids = [d["id"] for d in out]
 assert len(ids) == len(set(ids)), "duplicate ids"
-json.dump(out, open("data/dishes.json", "w"), ensure_ascii=False, indent=1)
-print(len(CURATED), "curated INDB dishes;", len(out) - len(CURATED), "regional dishes;", len(out), "total")
+json.dump(out, open("data/dishes.json", "w"), ensure_ascii=False, separators=(",", ":"))
+from collections import Counter
+print(len(out), "dishes:", Counter(d["source"] + (" (curated)" if d["cuisine"] == "Everyday Indian" else "") for d in out))
+print("excluded deep-fried INDB rows:", len(excluded_fried))
 print("kcal/macro mismatches:", issues or "none")

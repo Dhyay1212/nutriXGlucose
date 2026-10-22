@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { DISHES, EVERYDAY, REGIONAL, matchDish } from "@/lib/dishes";
+import { DISHES, DISH_BY_ID, EVERYDAY, REFERENCE, matchDish } from "@/lib/dishes";
 import { callClaude, extractJson, hasClaude } from "@/lib/claude";
 
 export const runtime = "nodejs";
@@ -14,9 +14,10 @@ Rules:
 - Prefer a dish_id from these lists when the dish matches; otherwise dish_id = null and give your best common name.
 Everyday dishes (prefer these for home-style plates):
 ${EVERYDAY.map((d) => `${d.id} = ${d.name} [${d.unit}${d.unitGrams ? `, 1 ≈ ${d.unitGrams} g` : ""}]`).join("\n")}
-Regional dishes (whole servings):
-${REGIONAL.map((d) => `${d.id} = ${d.name}`).join("\n")}
-- portion: count of the dish's unit — katoris (standard bowl) for dals, curries, rice and sabzi in 0.5 steps; pieces for roti, dosa, idli, paratha, thepla, dhokla; glasses or cups for drinks; servings for regional dishes.
+More common dishes (snacks, sweets, restaurant food):
+${REFERENCE.map((d) => `${d.id} = ${d.name.replace(" (reference)", "")} [${d.unit}]`).join("\n")}
+If a dish is in neither list, set dish_id = null and give its usual Indian name; the app searches its full database of 1,100+ dishes.
+- portion: count of the dish's unit — katoris (standard bowl) for dals, curries, rice and sabzi in 0.5 steps; pieces for roti, dosa, idli, paratha, thepla, dhokla; glasses or cups for drinks; servings otherwise.
 - confidence: 0 to 1 for the dish identity.
 - Do not estimate calories or nutrients. Do not give health advice.
 - If the image is not food, return {"dishes":[],"notes":"not a meal photo"}.`;
@@ -33,12 +34,21 @@ const DEMO = {
   notes: "Demo mode: no ANTHROPIC_API_KEY set, so this is a sample thali.",
 };
 
+type DetDish = { dishId: string; label: string; score: number; count: number };
+type Detector = { dishes?: DetDish[]; ingredients?: { label: string; score: number }[] };
+const DET_MIN = 0.35;
+
 export async function POST(req: Request) {
   try {
-    const { image } = (await req.json()) as { image?: string };
+    const { image, detector } = (await req.json()) as { image?: string; detector?: Detector };
     if (!image?.startsWith("data:image/")) return NextResponse.json({ error: "Send a data:image/... URL" }, { status: 400 });
+    const det = (detector?.dishes ?? []).filter((d) => d.score >= DET_MIN && DISH_BY_ID[d.dishId]);
 
-    if (!hasClaude()) return NextResponse.json(normalise(DEMO));
+    if (!hasClaude()) {
+      // No AI key: use the on-device NutriX detector. If it found nothing, say so (never a fake sample plate).
+      if (det.length || detector) return NextResponse.json(fromDetector(det, detector));
+      return NextResponse.json(normalise(DEMO)); // detector could not run on this device
+    }
 
     const [meta, b64] = image.split(",");
     const mediaType = meta.slice(5, meta.indexOf(";"));
@@ -47,7 +57,13 @@ export async function POST(req: Request) {
       maxTokens: 1000,
       content: [
         { type: "image", source: { type: "base64", media_type: mediaType, data: b64 } },
-        { type: "text", text: "Identify each dish and its portion. JSON only." },
+        {
+          type: "text",
+          text:
+            (det.length
+              ? `An on-device detector suggests (it can be wrong or miss dishes): ${det.map((d) => `${d.dishId} ${Math.round(d.score * 100)}%`).join(", ")}. Use it as a hint only.\n`
+              : "") + "Identify each dish and its portion. JSON only.",
+        },
       ],
     });
     return NextResponse.json(normalise(extractJson(text)));
@@ -55,6 +71,31 @@ export async function POST(req: Request) {
     console.error(e);
     return NextResponse.json({ error: e.message ?? "Analysis failed" }, { status: 500 });
   }
+}
+
+function fromDetector(det: DetDish[], detector?: Detector) {
+  const dishes = det.map((d) => {
+    const dish = DISH_BY_ID[d.dishId];
+    return {
+      aiName: d.label,
+      dishId: dish.id,
+      name: dish.name,
+      portion: dish.unit === "piece" ? Math.min(4, Math.max(1, d.count)) : 1,
+      confidence: d.score,
+      matched: true,
+      via: "detector",
+    };
+  });
+  const ing = (detector?.ingredients ?? []).filter((i) => i.score >= DET_MIN).map((i) => i.label);
+  const seen = ing.length ? ` Ingredients seen: ${ing.join(", ")}.` : "";
+  return {
+    demo: false,
+    detector: true,
+    notes: dishes.length
+      ? "Found by the NutriX detector on your phone. It knows 32 Indian dishes, so add anything it missed." + seen
+      : "The NutriX detector didn't recognise a dish it knows (it covers 32 Indian dishes such as dosa, idli, dal, chole, biryani and samosa). Search for what you ate below." + seen,
+    dishes,
+  };
 }
 
 // Map Claude's names onto the NutriX dish table (nutrition is looked up by script, never by the AI).
@@ -69,6 +110,7 @@ function normalise(r: any) {
       portion: clampPortion(Number(d.portion) || 1, m?.unit ?? String(d.unit ?? "katori")),
       confidence: Math.max(0, Math.min(1, Number(d.confidence) || 0.5)),
       matched: !!m,
+      via: r.demo ? "demo" : "ai",
     };
   });
   return { demo: !!r.demo, notes: r.notes ?? "", dishes };

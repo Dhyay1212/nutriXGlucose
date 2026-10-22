@@ -2,7 +2,9 @@
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import UserProvider, { useUser } from "@/components/UserProvider";
-import { DISH_BY_ID, EVERYDAY, REGIONAL, PORTION_OPTIONS, UNIT_LABEL, nutritionFor } from "@/lib/dishes";
+import { DISH_BY_ID, PORTION_OPTIONS, UNIT_LABEL, nutritionFor, sourceLabel } from "@/lib/dishes";
+import DishPicker from "@/components/DishPicker";
+import { detect, preloadYolo, summarise } from "@/lib/yolo";
 import { resizeImage } from "@/lib/image";
 import { saveMeal, uid } from "@/lib/store";
 import { fromLocalInput, toLocalInput } from "@/lib/format";
@@ -12,9 +14,8 @@ export default function Page() {
   return <UserProvider><LogMeal /></UserProvider>;
 }
 
-interface Draft extends MealItem { key: string; matched: boolean }
+interface Draft extends MealItem { key: string; matched: boolean; via?: string }
 
-const CUISINES = [...new Set(REGIONAL.map((d) => d.cuisine))];
 
 function LogMeal() {
   const { user } = useUser();
@@ -30,25 +31,40 @@ function LogMeal() {
   const [aiNote, setAiNote] = useState("");
   const [when, setWhen] = useState(toLocalInput());
 
-  useEffect(() => { started.current = Date.now(); }, []);
+  const [detInfo, setDetInfo] = useState<string | null>(null);
+  useEffect(() => { started.current = Date.now(); preloadYolo(); }, []);
 
   async function onFile(f: File | undefined) {
     if (!f) return;
     setErr(null);
     setItems(null);
+    setDetInfo(null);
     try {
       setBusy("Reading photo…");
       const [big, small] = await Promise.all([resizeImage(f, 1024, 0.8), resizeImage(f, 320, 0.7)]);
       setPhoto(big);
       setThumb(small);
+      setBusy("Running the NutriX detector on your phone…");
+      let detector: ReturnType<typeof summarise> | null = null;
+      try {
+        const t0 = performance.now();
+        const dets = await detect(big);
+        detector = summarise(dets);
+        const ms = Math.round(performance.now() - t0);
+        setDetInfo(detector.dishes.length || detector.ingredients.length
+          ? `Detector (${ms} ms): ${[...detector.dishes.map((d) => `${d.label} ${Math.round(d.score * 100)}%`), ...detector.ingredients.slice(0, 4).map((i) => `${i.label} ${Math.round(i.score * 100)}%`)].join(", ")}`
+          : `Detector (${ms} ms): nothing recognised`);
+      } catch (e) {
+        console.warn("YOLO detector failed", e);
+        setDetInfo("Detector unavailable on this device; using AI only.");
+      }
       setBusy("Finding dishes…");
-      const res = await fetch("/api/analyze", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ image: big }) });
+      const res = await fetch("/api/analyze", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ image: big, detector }) });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Analysis failed");
       setDemo(!!data.demo);
       setAiNote(data.notes || "");
-      setItems(
-        data.dishes.map((d: any) => ({
+      const list: Draft[] = data.dishes.map((d: any) => ({
           key: uid(),
           dishId: d.dishId ?? "",
           name: d.name,
@@ -56,8 +72,9 @@ function LogMeal() {
           portion: d.portion,
           confidence: d.confidence,
           matched: d.matched,
-        }))
-      );
+          via: d.via,
+        }));
+      setItems(list.length ? list : [{ key: uid(), dishId: "", name: "", portion: 1, matched: false }]);
     } catch (e: any) {
       setErr(e.message);
     } finally {
@@ -122,10 +139,11 @@ function LogMeal() {
         <div className="card">
           <div className="row between">
             <h2 style={{ margin: 0 }}>Check the dishes</h2>
-            {demo && <span className="pill warn">demo result</span>}
+            {demo ? <span className="pill warn">demo result</span> : items.some((i) => i.via === "detector") ? <span className="pill">NutriX detector</span> : null}
           </div>
           <p className="muted tiny">Fix anything that's wrong, then save. Nutrition comes from the NutriX dish table (Indian Nutrient Databank), not the AI.</p>
-          {aiNote && !demo && <p className="tiny muted">AI note: {aiNote}</p>}
+          {aiNote && !demo && <p className="tiny muted">{aiNote}</p>}
+          {detInfo && <p className="tiny muted">{detInfo}</p>}
 
           {items.map((it) => {
             const d = DISH_BY_ID[it.dishId];
@@ -134,24 +152,14 @@ function LogMeal() {
             return (
               <div className="item" key={it.key}>
                 <div>
-                  <select value={it.dishId} onChange={(e) => {
-                    const nd = DISH_BY_ID[e.target.value];
+                  <DishPicker value={it.dishId} fallbackName={it.aiName} onPick={(id) => {
+                    const nd = DISH_BY_ID[id];
                     const allowed = nd ? PORTION_OPTIONS[nd.unit] : [1];
-                    update(it.key, { dishId: e.target.value, name: nd?.name ?? it.name, matched: !!nd, portion: allowed.includes(it.portion) ? it.portion : 1 });
-                  }}>
-                    <option value="">— pick a dish —</option>
-                    <optgroup label="Everyday Indian (INDB)">
-                      {EVERYDAY.map((x) => <option key={x.id} value={x.id}>{x.name}</option>)}
-                    </optgroup>
-                    {CUISINES.map((c) => (
-                      <optgroup key={c} label={`${c} (regional, estimate)`}>
-                        {REGIONAL.filter((x) => x.cuisine === c).map((x) => <option key={x.id} value={x.id}>{x.name}</option>)}
-                      </optgroup>
-                    ))}
-                  </select>
+                    update(it.key, { dishId: id, name: nd?.name ?? it.name, matched: !!nd, portion: allowed.includes(it.portion) ? it.portion : 1 });
+                  }} />
                   <div className="tiny muted" style={{ marginTop: 4 }}>
-                    {it.aiName && <>AI saw “{it.aiName}”{it.confidence != null && ` · ${Math.round(it.confidence * 100)}% sure`} · </>}
-                    {n && d ? <>{n.grams ? `${n.grams} g · ` : ""}{n.carbs} g carbs · {n.kcal} kcal · <span title={d.sourceName}>{d.source === "INDB" ? `INDB ${d.sourceCode}` : "regional estimate"}</span></> : <span style={{ color: "var(--bad)" }}>Not in the NutriX table yet: pick the closest dish</span>}
+                    {it.aiName && <>{it.via === "detector" ? "Detector saw" : "AI saw"} “{it.aiName}”{it.confidence != null && ` · ${Math.round(it.confidence * 100)}% sure`} · </>}
+                    {n && d ? <>{n.grams ? `${n.grams} g · ` : ""}{n.carbs} g carbs · {n.kcal} kcal · <span title={d.sourceName}>{sourceLabel(d)}</span></> : <span style={{ color: "var(--bad)" }}>Not in the NutriX table yet: pick the closest dish</span>}
                   </div>
                 </div>
                 <button className="btn danger small" onClick={() => setItems((xs) => xs!.filter((x) => x.key !== it.key))}>Remove</button>

@@ -35,8 +35,13 @@ npm run dev
 ## Before real patients
 The Supabase policies are open (anon key, no login) for the demo. Add Supabase Auth and per-user row-level security before the pilot.
 
+## Food detector
+The NutriX YOLOv8n detector runs in the browser (ONNX + onnxruntime-web) before the AI call. See `model/README.md`.
+
+## Dish data
+1,169 dishes from INDB, a reference table and the regional layer. See `data/README.md`.
+
 ## Next
-- Swap in the NutriX YOLOv8 detector (Roboflow) as first pass, Claude as fallback
 - Use confirmed photo + dish labels to retrain the detector
 - CGM CSV upload; n8n weekly-note workflow calling `/api/insight`
 - Hindi and regional languages

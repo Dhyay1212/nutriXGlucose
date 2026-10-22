@@ -6,23 +6,34 @@
 python3 scripts/build_dishes.py "/path/to/Food Dataset"
 ```
 
-## What's in it (275 dishes)
+## What's in it (1,169 dishes)
 
 | Group | Count | Source | Portion unit | Status |
 |---|---|---|---|---|
-| Everyday Indian | 59 | `INDB.xlsx` (Indian Nutrient Databank), by food code | katori, piece, glass, cup | values from INDB; `checked: false` until a dietitian verifies |
+| Everyday Indian (curated) | 59 | `INDB.xlsx` (Indian Nutrient Databank), by food code | katori, piece, glass, cup | INDB values; ranked first in search and in the AI prompt |
+| INDB, all other recipes | 798 | `INDB.xlsx` | katori (150 g) for bowl/plate dishes, glass/cup for drinks, INDB serving for pieces, 100 g when INDB's serving is a whole pie/cake | INDB values |
+| Reference | 96 | `indian_food_nutrition_dataset.csv` | as stated (piece, katori, glass…) | generic round-number estimates; fills gaps (samosa, puri, jalebi, chicken biryani, naan…) |
 | Regional | 216 | `all_217_regional_recipes_and_ingredients.csv` | 1 serving | estimates (round numbers, no source); duplicate Basundi removed |
+
+All rows have `checked: false` until a dietitian verifies them.
 
 Katori weights follow the NutriX design: 180 g for dals, curries and liquids; 150 g for rice and grain dishes; 120 g for dry sabzi. Piece dishes (roti, paratha, dosa…) use INDB's own per-serving values. Idli uses 40 g per piece.
 
 ## Known data issues found while building
 
-- **Deep-fried INDB recipes count all the frying oil as eaten.** Poori shows 78 g fat per 100 g, kofta curries and pakoras over 600 kcal per 100 g, and the oil dilutes their per-100 g carbs (poori: 8 g). These were left out. Per-serving carbs are not affected by oil, so they can be added later using `unit_serving_carb_g` with kcal flagged.
+- **Deep-fried INDB recipes count all the frying oil as eaten.** Poori shows 78 g fat per 100 g, kofta curries and pakoras over 600 kcal per 100 g, and the oil dilutes their per-100 g carbs (poori: 8 g). 137 such rows (fat > 60% of energy and > 350 kcal/100 g) were left out; the reference table covers the common fried foods.
 - Also left out: plain poha `BFP044` and plain omelette `ASC061` (oil-heavy), khaman `BFP439` (serving weight inconsistent with its carbs). "Poha" uses vegetable poha `BFP045`.
 - INDB has no plain curd, plain toor dal, chicken biryani, jalebi, pongal or vada pav. "Toor dal" uses `BFP172` (arhar dal with spinach) as the nearest match.
 - `Units.xlsx` has **no katori, bowl or roti entries** (only 1 of 345 rows mentions a piece), despite the dataset report. Katori weights above are NutriX design values, not measured.
 - No glycemic index data in any file.
 
-## Not used (too large or not relevant to glucose)
+## Not used
 
-RecipeNLG, RAW_recipes, PP_recipes, Epicurious files, `ingr_map.pkl`, UK/US composition tables.
+| File | Why |
+|---|---|
+| Indian_Food_Ingredients_Nutrition_CookingMethods.csv (6,513) | Nutrition copied from INDB by fuzzy name match; adds no new values |
+| Indain_Food_Cuisine_Dataset.csv (8,725) | Recipes only, no nutrition |
+| Indian_Food_DF.csv (2,645) | Scraped packaged products incl. non-food rows |
+| foods_dataset_.csv (1,000) | Synthetic restaurant menu |
+| RecipeNLG, RAW/PP recipes, Epicurious, ingr_map.pkl | Gigabytes of mostly Western recipes; not needed for glucose |
+| UK/US composition tables, USDA retention factors | Raw ingredients, for a later recipe calculator |
