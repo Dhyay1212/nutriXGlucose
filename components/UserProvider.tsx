@@ -84,7 +84,7 @@ function Onboard({ users, onDone }: { users: UserProfile[]; onDone: (id: string)
         </form>
         <hr />
         <button className="btn ghost" disabled={busy} onClick={async () => { setBusy(true); onDone(await seedDemoWeek()); }}>
-          Try it with a sample week
+          Try it with sample data (Person 1, 30 days)
         </button>
         <p className="tiny muted">Data is saved {storageMode === "supabase" ? "to the NutriX Supabase database" : "in this browser only (Supabase not connected)"}.</p>
       </div>

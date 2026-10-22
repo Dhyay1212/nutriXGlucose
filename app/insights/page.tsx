@@ -4,7 +4,7 @@ import UserProvider, { useUser } from "@/components/UserProvider";
 import { DishRiseChart } from "@/components/Charts";
 import { MealTimeBars, ScatterFit } from "@/components/Viz";
 import { listMeals, listNotes, listReadings, saveNote, uid } from "@/lib/store";
-import { dishStats, inLastWeek, riseForMeal, startOfWeek, MIN_INSTANCES } from "@/lib/glucose";
+import { dishStats, inLastDays, inLastWeek, riseForMeal, startOfWeek, MIN_INSTANCES } from "@/lib/glucose";
 import { calibrate, MIN_CAL } from "@/lib/impact";
 import { fmtTime } from "@/lib/format";
 import type { Meal, Note, Reading } from "@/lib/types";
@@ -25,6 +25,7 @@ function Insights() {
   const [notes, setNotes] = useState<Note[]>([]);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  const [days, setDays] = useState<7 | 30>(7);
 
   const load = async () => {
     if (!user) return;
@@ -35,7 +36,7 @@ function Insights() {
   };
   useEffect(() => { load(); }, [user?.id]);
 
-  const week = inLastWeek(meals, (m) => m.eatenAt);
+  const week = inLastDays(meals, (m) => m.eatenAt, days);
   const stats = dishStats(week, readings);
   const withRise = week.filter((m) => riseForMeal(m, readings).rise != null);
   const cal = calibrate(meals, readings);
@@ -59,7 +60,7 @@ function Insights() {
       const res = await fetch("/api/insight", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ userName: user.name, stats, meals: week.length, mealsWithRise: withRise.length, readings: inLastWeek(readings, (r) => r.takenAt).length }),
+        body: JSON.stringify({ userName: user.name, stats, meals: week.length, mealsWithRise: withRise.length, readings: inLastDays(readings, (r) => r.takenAt, days).length }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Failed");
@@ -77,6 +78,9 @@ function Insights() {
       <div>
         <h1>Your patterns</h1>
         <p className="muted tiny" style={{ margin: 0 }}>How your own meals affect your own glucose. Patterns, not diagnoses.</p>
+        <div className="chips" style={{ marginTop: 10 }}>
+          {([7, 30] as const).map((d) => <button key={d} className={"chip" + (days === d ? " on" : "")} onClick={() => setDays(d)}>Last {d} days</button>)}
+        </div>
       </div>
 
       <section className="card">
@@ -113,13 +117,13 @@ function Insights() {
       )}
 
       <section className="card">
-        <div className="card-head"><h2>Average rise per dish</h2><span className="tiny muted">last 7 days</span></div>
+        <div className="card-head"><h2>Average rise per dish</h2><span className="tiny muted">last {days} days</span></div>
         <p className="tiny muted" style={{ marginTop: 0 }}>Meals are mixed, so these are associations, not causes. Dishes need {MIN_INSTANCES}+ measured meals before we call it a pattern.</p>
         <DishRiseChart stats={stats} />
       </section>
 
       <section className="card">
-        <div className="card-head"><h2>Rise by time of day</h2><span className="tiny muted">last 7 days</span></div>
+        <div className="card-head"><h2>Rise by time of day</h2><span className="tiny muted">last {days} days</span></div>
         <MealTimeBars rows={slots} />
       </section>
 

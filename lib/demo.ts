@@ -1,7 +1,7 @@
 "use client";
 import { DISH_BY_ID, nutritionFor } from "./dishes";
-import { saveMeal, saveReading, saveUser, uid } from "./store";
-import type { Meal, MealItem } from "./types";
+import { replaceUserData, saveUser, uid } from "./store";
+import type { Meal, MealItem, Reading } from "./types";
 import { loadForItems } from "./impact";
 
 // A plausible demo week so charts and notes have something to show. Clearly labelled as demo data.
@@ -34,41 +34,63 @@ const DINNERS: Plan[] = [
   { hour: 20, items: [["roti", 2], ["toor_dal", 1], ["bhindi", 1]], rise: 30 },
 ];
 
-export const DEMO_USER = { id: "P00", name: "Demo user (sample data)" };
+export const DEMO_USER = { id: "P00", name: "Person 1 (sample data)" };
+export const DEMO_DAYS = 30;
 
+const SNACKS: Plan[] = [
+  { hour: 17, items: [["tea", 1], ["dhokla", 2]], rise: 0 },
+  { hour: 17, items: [["tea", 1]], rise: 0 },
+  { hour: 17, items: [["sprouts_salad", 1]], rise: 0 },
+  { hour: 17, items: [["salted_lassi", 1]], rise: 0 },
+];
+
+/** Person 1: 30 days of meals and readings. Replaces any earlier sample data for P00 (no duplicates).
+ *  Their glucose responds ≈ 2.1 mg/dL per unit of meal glucose load + noise, so the personal model can learn it.
+ *  About 1 in 6 meals has no 2-hour reading (real people miss some). */
 export async function seedDemoWeek() {
   await saveUser(DEMO_USER);
   const now = new Date();
   let seed = 7;
   const rand = () => ((seed = (seed * 9301 + 49297) % 233280) / 233280);
-  for (let d = 6; d >= 0; d--) {
-    for (const plan of [BREAKFASTS[6 - d], LUNCHES[6 - d], DINNERS[6 - d]]) {
+  const pick = <T,>(xs: T[]) => xs[Math.floor(rand() * xs.length)];
+  const meals: Meal[] = [];
+  const readings: Reading[] = [];
+  const stamp = new Date().toISOString();
+  const reading = (t: Date, mgdl: number): Reading => ({ id: uid(), userId: DEMO_USER.id, takenAt: t.toISOString(), mgdl: Math.round(mgdl), createdAt: stamp });
+
+  for (let d = DEMO_DAYS - 1; d >= 0; d--) {
+    const day: Plan[] = [pick(BREAKFASTS), pick(LUNCHES), pick(DINNERS)];
+    if (rand() < 0.35) day.splice(2, 0, pick(SNACKS));
+    const fasting = 100 + rand() * 22;
+    for (const plan of day) {
       const t = new Date(now);
       t.setDate(now.getDate() - d);
-      t.setHours(plan.hour, Math.floor(rand() * 30), 0, 0);
+      t.setHours(plan.hour, Math.floor(rand() * 40), 0, 0);
       if (t > now) continue;
-      const items: MealItem[] = plan.items.map(([id, p]) => ({ dishId: id, name: DISH_BY_ID[id].name, portion: p, confidence: 0.9 }));
+      // portions vary a little day to day
+      const items: MealItem[] = plan.items.map(([id, p]) => {
+        const unit = DISH_BY_ID[id].unit;
+        const jitter = rand() < 0.25 ? (unit === "piece" ? 1 : 0.5) * (rand() < 0.5 ? -1 : 1) : 0;
+        const portion = Math.max(unit === "piece" ? 1 : 0.5, p + jitter);
+        return { dishId: id, name: DISH_BY_ID[id].name, portion, confidence: 0.9 };
+      });
       const totals = items.reduce(
         (a, it) => {
           const n = nutritionFor(it.dishId, it.portion);
-          return { kcal: a.kcal + n.kcal, carbs: a.carbs + n.carbs, protein: a.protein + n.protein, fat: a.fat + n.fat, fibre: a.fibre + n.fibre };
+          return { kcal: a.kcal + n.kcal, carbs: a.carbs + n.carbs, protein: a.protein + n.protein, fat: a.fat + n.fat, fibre: Math.round((a.fibre + n.fibre) * 10) / 10 };
         },
         { kcal: 0, carbs: 0, protein: 0, fat: 0, fibre: 0 }
       );
-      const meal: Meal = { id: uid(), userId: DEMO_USER.id, eatenAt: t.toISOString(), items, photo: null, totals, createdAt: new Date().toISOString() };
-      await saveMeal(meal);
-      const pre = Math.round(105 + rand() * 25);
-      const preT = new Date(t.getTime() - 10 * 60000);
-      const peakT = new Date(t.getTime() + (75 + rand() * 45) * 60000);
-      if (peakT > now) {
-        await saveReading({ id: uid(), userId: DEMO_USER.id, takenAt: preT.toISOString(), mgdl: pre, createdAt: new Date().toISOString() });
-        continue;
-      }
-      await saveReading({ id: uid(), userId: DEMO_USER.id, takenAt: preT.toISOString(), mgdl: pre, createdAt: new Date().toISOString() });
-      // Demo person: rise ≈ 2.1 mg/dL per unit of meal glucose load, plus noise (so the personal model has something to learn).
-      const rise = Math.round(2.1 * loadForItems(items).gl + 6 + (rand() * 16 - 8));
-      await saveReading({ id: uid(), userId: DEMO_USER.id, takenAt: peakT.toISOString(), mgdl: pre + rise, createdAt: new Date().toISOString() });
+      meals.push({ id: uid(), userId: DEMO_USER.id, eatenAt: t.toISOString(), items, photo: null, totals, source: "manual", logSeconds: Math.round(20 + rand() * 40), createdAt: stamp });
+
+      const pre = fasting + (plan.hour > 11 ? 8 + rand() * 12 : rand() * 6);
+      readings.push(reading(new Date(t.getTime() - 10 * 60000), pre));
+      const peakT = new Date(t.getTime() + (70 + rand() * 50) * 60000);
+      if (peakT > now || rand() < 0.16) continue; // missed / not yet due
+      const rise = 2.1 * loadForItems(items).gl + 6 + (rand() * 18 - 9);
+      readings.push(reading(peakT, pre + Math.max(5, rise)));
     }
   }
+  await replaceUserData(DEMO_USER.id, meals, readings);
   return DEMO_USER.id;
 }

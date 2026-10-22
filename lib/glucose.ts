@@ -96,3 +96,10 @@ export function inLastWeek<T>(items: T[], getDate: (t: T) => string, now = new D
   const from = startOfWeek(now).getTime();
   return items.filter((i) => new Date(getDate(i)).getTime() >= from);
 }
+
+export function inLastDays<T>(items: T[], getDate: (t: T) => string, days: number, now = new Date()): T[] {
+  const from = new Date(now);
+  from.setHours(0, 0, 0, 0);
+  from.setDate(from.getDate() - (days - 1));
+  return items.filter((i) => new Date(getDate(i)).getTime() >= from.getTime());
+}

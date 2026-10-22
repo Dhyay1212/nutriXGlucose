@@ -154,6 +154,21 @@ export async function saveNote(n: Note) {
   LS.set("notes", [...LS.get<Note>("notes").filter((x) => x.id !== n.id), n]);
 }
 
+/** Replace ALL meals and readings of one user in one go (used by the sample-data loader). */
+export async function replaceUserData(userId: string, meals: Meal[], readings: Reading[]) {
+  if (sb) {
+    let r = await sb.from("meals").delete().eq("user_id", userId);
+    if (r.error) throw r.error;
+    r = await sb.from("readings").delete().eq("user_id", userId);
+    if (r.error) throw r.error;
+    if (meals.length) { r = await sb.from("meals").insert(meals.map(mealToRow)); if (r.error) throw r.error; }
+    if (readings.length) { r = await sb.from("readings").insert(readings.map(readingToRow)); if (r.error) throw r.error; }
+    return;
+  }
+  LS.set("meals", [...LS.get<Meal>("meals").filter((m) => m.userId !== userId), ...meals]);
+  LS.set("readings", [...LS.get<Reading>("readings").filter((x) => x.userId !== userId), ...readings]);
+}
+
 // ---------- current user (per device) ----------
 export function getCurrentUserId(): string | null {
   try {
