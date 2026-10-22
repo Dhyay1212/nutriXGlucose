@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { DISHES, matchDish } from "@/lib/dishes";
+import { DISHES, EVERYDAY, REGIONAL, matchDish } from "@/lib/dishes";
 import { callClaude, extractJson, hasClaude } from "@/lib/claude";
 
 export const runtime = "nodejs";
@@ -7,13 +7,16 @@ export const maxDuration = 60;
 
 const SYSTEM = `You identify dishes on Indian / South Asian meal plates from a photo.
 Return ONLY JSON in this shape:
-{"dishes":[{"name":string,"dish_id":string|null,"portion":number,"unit":"katori"|"piece","confidence":number}],"notes":string}
+{"dishes":[{"name":string,"dish_id":string|null,"portion":number,"unit":"katori"|"piece"|"glass"|"cup"|"serving","confidence":number}],"notes":string}
 
 Rules:
 - List every separate dish you can see (thalis often have 4-6). Include small sides like raita, curd, salad, pickle is optional.
-- Prefer a dish_id from this list when the dish matches; otherwise dish_id = null and give your best common name:
-${DISHES.map((d) => `${d.id} = ${d.name} (${d.unit}, 1 ${d.unit} ≈ ${d.unitGrams} g)`).join("\n")}
-- portion: estimated count of standard katoris (180 g bowl) for curries, dals, rice and sabzi; count of pieces for roti, dosa, idli, paratha, thepla, dhokla, sweets. Use 0.5 steps for katoris.
+- Prefer a dish_id from these lists when the dish matches; otherwise dish_id = null and give your best common name.
+Everyday dishes (prefer these for home-style plates):
+${EVERYDAY.map((d) => `${d.id} = ${d.name} [${d.unit}${d.unitGrams ? `, 1 ≈ ${d.unitGrams} g` : ""}]`).join("\n")}
+Regional dishes (whole servings):
+${REGIONAL.map((d) => `${d.id} = ${d.name}`).join("\n")}
+- portion: count of the dish's unit — katoris (standard bowl) for dals, curries, rice and sabzi in 0.5 steps; pieces for roti, dosa, idli, paratha, thepla, dhokla; glasses or cups for drinks; servings for regional dishes.
 - confidence: 0 to 1 for the dish identity.
 - Do not estimate calories or nutrients. Do not give health advice.
 - If the image is not food, return {"dishes":[],"notes":"not a meal photo"}.`;
@@ -22,10 +25,10 @@ const DEMO = {
   demo: true,
   dishes: [
     { name: "Plain rice", dish_id: "plain_rice", portion: 1, unit: "katori", confidence: 0.92 },
-    { name: "Dal tadka", dish_id: "dal_tadka", portion: 1, unit: "katori", confidence: 0.88 },
+    { name: "Dal tadka", dish_id: "toor_dal", portion: 1, unit: "katori", confidence: 0.88 },
     { name: "Roti", dish_id: "roti", portion: 2, unit: "piece", confidence: 0.95 },
     { name: "Bhindi sabzi", dish_id: "bhindi", portion: 0.5, unit: "katori", confidence: 0.71 },
-    { name: "Raita", dish_id: "raita", portion: 0.5, unit: "katori", confidence: 0.64 },
+    { name: "Raita", dish_id: "cucumber_raita", portion: 0.5, unit: "katori", confidence: 0.64 },
   ],
   notes: "Demo mode: no ANTHROPIC_API_KEY set, so this is a sample thali.",
 };
@@ -41,7 +44,7 @@ export async function POST(req: Request) {
     const mediaType = meta.slice(5, meta.indexOf(";"));
     const text = await callClaude({
       system: SYSTEM,
-      maxTokens: 800,
+      maxTokens: 1000,
       content: [
         { type: "image", source: { type: "base64", media_type: mediaType, data: b64 } },
         { type: "text", text: "Identify each dish and its portion. JSON only." },
@@ -63,7 +66,7 @@ function normalise(r: any) {
       aiName: String(d.name ?? ""),
       dishId: m?.id ?? null,
       name: m?.name ?? String(d.name ?? "Unknown"),
-      portion: clampPortion(Number(d.portion) || 1, m?.unit ?? d.unit),
+      portion: clampPortion(Number(d.portion) || 1, m?.unit ?? String(d.unit ?? "katori")),
       confidence: Math.max(0, Math.min(1, Number(d.confidence) || 0.5)),
       matched: !!m,
     };

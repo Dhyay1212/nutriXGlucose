@@ -2,7 +2,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import UserProvider, { useUser } from "@/components/UserProvider";
-import { DISHES, DISH_BY_ID, nutritionFor } from "@/lib/dishes";
+import { DISH_BY_ID, EVERYDAY, REGIONAL, PORTION_OPTIONS, UNIT_LABEL, nutritionFor } from "@/lib/dishes";
 import { resizeImage } from "@/lib/image";
 import { saveMeal, uid } from "@/lib/store";
 import { fromLocalInput, toLocalInput } from "@/lib/format";
@@ -14,8 +14,7 @@ export default function Page() {
 
 interface Draft extends MealItem { key: string; matched: boolean }
 
-const KATORI = [0.5, 1, 1.5, 2];
-const PIECES = [1, 2, 3, 4];
+const CUISINES = [...new Set(REGIONAL.map((d) => d.cuisine))];
 
 function LogMeal() {
   const { user } = useUser();
@@ -125,32 +124,40 @@ function LogMeal() {
             <h2 style={{ margin: 0 }}>Check the dishes</h2>
             {demo && <span className="pill warn">demo result</span>}
           </div>
-          <p className="muted tiny">Fix anything that's wrong, then save. Nutrition comes from the NutriX dish table, not the AI.</p>
+          <p className="muted tiny">Fix anything that's wrong, then save. Nutrition comes from the NutriX dish table (Indian Nutrient Databank), not the AI.</p>
           {aiNote && !demo && <p className="tiny muted">AI note: {aiNote}</p>}
 
           {items.map((it) => {
             const d = DISH_BY_ID[it.dishId];
-            const opts = d?.unit === "piece" ? PIECES : KATORI;
+            const opts = d ? PORTION_OPTIONS[d.unit] : [];
             const n = d ? nutritionFor(it.dishId, it.portion) : null;
             return (
               <div className="item" key={it.key}>
                 <div>
                   <select value={it.dishId} onChange={(e) => {
                     const nd = DISH_BY_ID[e.target.value];
-                    update(it.key, { dishId: e.target.value, name: nd?.name ?? it.name, matched: !!nd, portion: nd?.unit === "piece" ? Math.max(1, Math.round(it.portion)) : Math.min(2, it.portion) });
+                    const allowed = nd ? PORTION_OPTIONS[nd.unit] : [1];
+                    update(it.key, { dishId: e.target.value, name: nd?.name ?? it.name, matched: !!nd, portion: allowed.includes(it.portion) ? it.portion : 1 });
                   }}>
                     <option value="">— pick a dish —</option>
-                    {DISHES.map((x) => <option key={x.id} value={x.id}>{x.name}</option>)}
+                    <optgroup label="Everyday Indian (INDB)">
+                      {EVERYDAY.map((x) => <option key={x.id} value={x.id}>{x.name}</option>)}
+                    </optgroup>
+                    {CUISINES.map((c) => (
+                      <optgroup key={c} label={`${c} (regional, estimate)`}>
+                        {REGIONAL.filter((x) => x.cuisine === c).map((x) => <option key={x.id} value={x.id}>{x.name}</option>)}
+                      </optgroup>
+                    ))}
                   </select>
                   <div className="tiny muted" style={{ marginTop: 4 }}>
                     {it.aiName && <>AI saw “{it.aiName}”{it.confidence != null && ` · ${Math.round(it.confidence * 100)}% sure`} · </>}
-                    {n ? `${n.grams} g · ${n.carbs} g carbs · ${n.kcal} kcal` : <span style={{ color: "var(--bad)" }}>Not in the NutriX table yet: pick the closest dish</span>}
+                    {n && d ? <>{n.grams ? `${n.grams} g · ` : ""}{n.carbs} g carbs · {n.kcal} kcal · <span title={d.sourceName}>{d.source === "INDB" ? `INDB ${d.sourceCode}` : "regional estimate"}</span></> : <span style={{ color: "var(--bad)" }}>Not in the NutriX table yet: pick the closest dish</span>}
                   </div>
                 </div>
                 <button className="btn danger small" onClick={() => setItems((xs) => xs!.filter((x) => x.key !== it.key))}>Remove</button>
                 {d && (
                   <div className="controls">
-                    <span className="tiny muted">{d.unit === "piece" ? "Pieces" : "Katori"}</span>
+                    <span className="tiny muted">{UNIT_LABEL[d.unit]}</span>
                     {opts.map((p) => (
                       <button key={p} className={"chip" + (it.portion === p ? " on" : "")} onClick={() => update(it.key, { portion: p })}>
                         {p === 0.5 ? "½" : p === 1.5 ? "1½" : p}

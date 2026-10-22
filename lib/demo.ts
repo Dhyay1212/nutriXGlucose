@@ -10,27 +10,27 @@ const BREAKFASTS: Plan[] = [
   { hour: 8, items: [["idli", 3], ["sambar", 1]], rise: 42 },
   { hour: 8, items: [["plain_dosa", 2], ["sambar", 1]], rise: 58 },
   { hour: 8, items: [["upma", 1.5]], rise: 44 },
-  { hour: 8, items: [["thepla", 2], ["curd", 1]], rise: 30 },
+  { hour: 8, items: [["thepla", 2], ["cucumber_raita", 1]], rise: 30 },
   { hour: 8, items: [["poha", 1.5]], rise: 52 },
   { hour: 8, items: [["plain_dosa", 2], ["sambar", 1]], rise: 61 },
 ];
 const LUNCHES: Plan[] = [
-  { hour: 13, items: [["plain_rice", 1.5], ["dal_tadka", 1], ["bhindi", 1], ["roti", 1]], rise: 64 },
-  { hour: 13, items: [["roti", 3], ["dal_tadka", 1], ["mixed_veg", 1], ["salad", 1]], rise: 34 },
-  { hour: 13, items: [["plain_rice", 1.5], ["rajma", 1], ["raita", 1]], rise: 70 },
+  { hour: 13, items: [["plain_rice", 1.5], ["toor_dal", 1], ["bhindi", 1], ["roti", 1]], rise: 64 },
+  { hour: 13, items: [["roti", 3], ["toor_dal", 1], ["cabbage_matar", 1], ["salad", 1]], rise: 34 },
+  { hour: 13, items: [["plain_rice", 1.5], ["rajma", 1], ["cucumber_raita", 1]], rise: 70 },
   { hour: 13, items: [["roti", 3], ["chole", 1], ["salad", 1]], rise: 38 },
-  { hour: 13, items: [["plain_rice", 2], ["sambar", 1], ["curd", 1]], rise: 72 },
-  { hour: 13, items: [["roti", 2], ["dal_tadka", 1], ["aloo_sabzi", 1]], rise: 46 },
-  { hour: 13, items: [["veg_biryani", 2], ["raita", 1]], rise: 68 },
+  { hour: 13, items: [["plain_rice", 2], ["sambar", 1], ["cucumber_raita", 1]], rise: 72 },
+  { hour: 13, items: [["roti", 2], ["toor_dal", 1], ["aloo_sabzi", 1]], rise: 46 },
+  { hour: 13, items: [["veg_biryani", 2], ["cucumber_raita", 1]], rise: 68 },
 ];
 const DINNERS: Plan[] = [
-  { hour: 20, items: [["roti", 2], ["dal_tadka", 1], ["mixed_veg", 1]], rise: 32 },
-  { hour: 20, items: [["khichdi", 1.5], ["curd", 1]], rise: 50 },
+  { hour: 20, items: [["roti", 2], ["toor_dal", 1], ["cabbage_matar", 1]], rise: 32 },
+  { hour: 20, items: [["veg_khichdi", 1.5], ["cucumber_raita", 1]], rise: 50 },
   { hour: 20, items: [["roti", 2], ["palak_paneer", 1], ["salad", 1]], rise: 26 },
-  { hour: 20, items: [["plain_rice", 1], ["dal_tadka", 1], ["bhindi", 1]], rise: 55 },
+  { hour: 20, items: [["plain_rice", 1], ["toor_dal", 1], ["bhindi", 1]], rise: 55 },
   { hour: 20, items: [["roti", 2], ["chicken_curry", 1], ["salad", 1]], rise: 24 },
-  { hour: 20, items: [["khichdi", 1.5], ["raita", 1]], rise: 47 },
-  { hour: 20, items: [["roti", 2], ["dal_tadka", 1], ["bhindi", 1]], rise: 30 },
+  { hour: 20, items: [["veg_khichdi", 1.5], ["cucumber_raita", 1]], rise: 47 },
+  { hour: 20, items: [["roti", 2], ["toor_dal", 1], ["bhindi", 1]], rise: 30 },
 ];
 
 export const DEMO_USER = { id: "P00", name: "Demo user (sample data)" };

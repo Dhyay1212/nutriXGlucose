@@ -7,7 +7,8 @@ export const toLocalInput = (d = new Date()) => {
   return x.toISOString().slice(0, 16);
 };
 export const fromLocalInput = (s: string) => new Date(s).toISOString();
-export const portionLabel = (p: number, unit: "katori" | "piece") => {
+export const portionLabel = (p: number, unit: string) => {
   const n = p === 0.5 ? "½" : p === 1.5 ? "1½" : String(p);
-  return unit === "katori" ? `${n} katori` : `${n} pc`;
+  const u: Record<string, string> = { katori: "katori", piece: "pc", glass: "glass", cup: "cup", serving: "serving" };
+  return `${n} ${u[unit] ?? unit}`;
 };
