@@ -5,6 +5,7 @@ import { authEnabled, deleteUserData, exportUserData, signOut } from "@/lib/stor
 import { mealLoad } from "@/lib/impact";
 import { riseForMeal } from "@/lib/glucose";
 import { download, toCsv } from "@/lib/csv";
+import AppSetupCard from "@/components/AppSetupCard";
 
 export default function Page() {
   return <UserProvider allowAnonymous><Privacy /></UserProvider>;
@@ -71,6 +72,7 @@ function Privacy() {
           {authEnabled && <button className="btn ghost" onClick={async () => { await signOut(); window.location.href = "/"; }}>Sign out</button>}
         </>
       )}
+      <AppSetupCard always />
     </main>
   );
 }

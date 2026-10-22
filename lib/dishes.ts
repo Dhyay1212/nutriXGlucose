@@ -129,7 +129,7 @@ export function nutritionFor(dishId: string, portion: number) {
 
 export const PORTION_OPTIONS: Record<Unit, number[]> = {
   katori: [0.5, 1, 1.5, 2],
-  piece: [1, 2, 3, 4],
+  piece: [1, 2, 3, 4, 5, 6],
   glass: [0.5, 1, 2],
   cup: [0.5, 1, 2],
   serving: [0.5, 1, 1.5, 2, 3, 4],

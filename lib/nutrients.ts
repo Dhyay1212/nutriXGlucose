@@ -25,7 +25,7 @@ export const NUTRIENTS: NutrientMeta[] = [
   { key: "kcal", label: "Energy", unit: "kcal", group: "Energy & macros", ref: 2000 },
   { key: "carbs", label: "Carbohydrates", unit: "g", group: "Energy & macros", ref: 275 },
   { key: "netCarbs", label: "Net carbs (carbs − fibre)", unit: "g", group: "Energy & macros", indent: true },
-  { key: "sugar", label: "Free sugars", unit: "g", group: "Energy & macros", ref: 50, limit: true, indent: true },
+  { key: "sugar", label: "Sugars", unit: "g", group: "Energy & macros", ref: 50, limit: true, indent: true },
   { key: "fibre", label: "Fibre", unit: "g", group: "Energy & macros", ref: 25, indent: true },
   { key: "protein", label: "Protein", unit: "g", group: "Energy & macros", ref: 50 },
   { key: "fat", label: "Total fat", unit: "g", group: "Fats", ref: 70, limit: true },

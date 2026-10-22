@@ -1,11 +1,14 @@
 import { NextResponse } from "next/server";
 import { DISHES, DISH_BY_ID, EVERYDAY, REFERENCE, matchDish, type Dish, type Unit } from "@/lib/dishes";
 import { callClaude, extractJson, hasClaude, redact } from "@/lib/claude";
+import { parseMealText } from "@/lib/parseMeal";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
 
-const SYSTEM = `You identify every food and drink in a meal photo. Most photos are Indian / South Asian home meals, but any cuisine counts (pizza, pasta, burgers, Chinese, desserts, packaged snacks…).
+const SYSTEM = (mode: "photo" | "text") => `${mode === "text"
+  ? `You turn a person's typed or spoken description of a meal (English, Hindi or Hinglish; speech-to-text may have spelling mistakes) into a list of foods. Use the quantities they state; if none, assume one usual portion.`
+  : `You identify every food and drink in a meal photo.`} Most meals are Indian / South Asian home meals, but any cuisine counts (pizza, pasta, burgers, Chinese, desserts, packaged snacks…).
 Return ONLY JSON in this shape:
 {"dishes":[{"name":string,"dish_id":string|null,"portion":number,"unit":"katori"|"piece"|"glass"|"cup"|"serving","confidence":number,
   "est":{"grams":number,"kcal":number,"carbs":number,"protein":number,"fat":number,"fibre":number,
@@ -13,7 +16,7 @@ Return ONLY JSON in this shape:
          "iron_mg":number,"magnesium_mg":number,"vit_a_ug":number,"vit_c_mg":number,"folate_ug":number}}],"notes":string}
 
 Rules:
-- List every separate dish you can see (thalis often have 4-6). Include small sides like raita, curd and salad.
+- List every separate dish ${mode === "text" ? "mentioned" : "you can see (thalis often have 4-6). Include small sides like raita, curd and salad"}.
 - Toppings, garnishes and seasonings belong to their dish: a pizza with cheese and chilli flakes is ONE item "Pizza"; do not list cheese, herbs, chilli flakes, oregano, ketchup or coriander separately. Pickle and papad only if clearly a side.
 - Prefer a dish_id from these lists when the dish matches; otherwise dish_id = null and give your best common name.
 Everyday dishes (prefer these for home-style plates):
@@ -23,9 +26,9 @@ ${REFERENCE.map((d) => `${d.id} = ${d.name.replace(" (reference)", "")} [${d.uni
 If a dish is in neither list, set dish_id = null and give its usual name (e.g. "Pizza", "Pasta", "Veg burger"); the app searches its full database of 1,100+ dishes.
 - portion: count of the dish's unit — katoris (standard bowl) for dals, curries, rice and sabzi in 0.5 steps; pieces for roti, dosa, idli, paratha, thepla, dhokla; glasses or cups for drinks; servings otherwise.
 - confidence: 0 to 1 for the dish identity.
-- est: ALWAYS include it. Your best estimate for the WHOLE amount of that dish visible in the photo: total grams on the plate and the nutrition of that whole amount (typical home/restaurant recipe). A whole medium pizza is ~500-700 g; one roti ~40 g; a katori of dal ~180 g. Account for visible oil, ghee, cheese and sugar. These numbers are shown to the user as your estimate.
+- est: ALWAYS include it. Your best estimate for the WHOLE amount of that dish ${mode === "text" ? "described (all pieces/katoris together)" : "visible in the photo"}: total grams on the plate and the nutrition of that whole amount (typical home/restaurant recipe). A whole medium pizza is ~500-700 g; one roti ~40 g; a katori of dal ~180 g. Account for visible oil, ghee, cheese and sugar. These numbers are shown to the user as your estimate.
 - Do not give health advice.
-- Only if there is no food or drink in the image at all, return {"dishes":[],"notes":"no food found in this photo"}.`;
+- Only if there is no food or drink ${mode === "text" ? "in the text" : "in the image"} at all, return {"dishes":[],"notes":"no food found"}.`;
 
 const DEMO = {
   demo: true,
@@ -45,7 +48,8 @@ const DET_MIN = 0.35;
 
 export async function POST(req: Request) {
   try {
-    const { image, detector } = (await req.json()) as { image?: string; detector?: Detector };
+    const { image, detector, text: said } = (await req.json()) as { image?: string; detector?: Detector; text?: string };
+    if (typeof said === "string") return NextResponse.json(await fromText(said.slice(0, 600)));
     if (!image?.startsWith("data:image/")) return NextResponse.json({ error: "Send a data:image/... URL" }, { status: 400 });
     const det = (detector?.dishes ?? []).filter((d) => d.score >= DET_MIN && DISH_BY_ID[d.dishId]);
 
@@ -58,7 +62,7 @@ export async function POST(req: Request) {
     const [meta, b64] = image.split(",");
     const mediaType = meta.slice(5, meta.indexOf(";"));
     const text = await callClaude({
-      system: SYSTEM,
+      system: SYSTEM("photo"),
       maxTokens: 1000,
       content: [
         { type: "image", source: { type: "base64", media_type: mediaType, data: b64 } },
@@ -76,6 +80,28 @@ export async function POST(req: Request) {
     console.error(e);
     return NextResponse.json({ error: redact(String(e?.message ?? "Analysis failed")) }, { status: 500 });
   }
+}
+
+async function fromText(said: string) {
+  if (!said.trim()) throw new Error("Type or say what you ate.");
+  if (hasClaude()) {
+    try {
+      const reply = await callClaude({ system: SYSTEM("text"), maxTokens: 1000, content: [{ type: "text", text: `Meal: ${said}\nJSON only.` }] });
+      const r = normalise(extractJson(reply));
+      return { ...r, dishes: r.dishes.map((d: any) => ({ ...d, via: "text" })) };
+    } catch (e) {
+      console.warn("AI text parse failed, using the offline parser", e);
+    }
+  }
+  return fromParsed(said);
+}
+function fromParsed(said: string) {
+  const items = parseMealText(said);
+  return {
+    demo: false,
+    notes: items.some((i) => !i.dishId) ? "Matched offline against the INDB dish list. Pick the closest dish for anything not found." : "Matched offline against the INDB dish list.",
+    dishes: items.map((i) => ({ aiName: i.text, dishId: i.dishId, name: i.name, portion: i.portion, confidence: i.dishId ? 0.8 : 0.3, matched: !!i.dishId, via: "text" })),
+  };
 }
 
 function fromDetector(det: DetDish[], detector?: Detector) {

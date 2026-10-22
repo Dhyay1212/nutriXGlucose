@@ -1,5 +1,6 @@
 "use client";
 import Link from "next/link";
+import AppSetupCard from "@/components/AppSetupCard";
 import { useEffect, useState } from "react";
 import UserProvider, { useUser } from "@/components/UserProvider";
 import UserSwitch from "@/components/UserSwitch";
@@ -79,7 +80,6 @@ function Home() {
             <div className="tiny">Hi {user?.name?.split(" ")[0]} 👋</div>
             <h1>{dayWord}’s glucose load</h1>
           </div>
-          <Link className="btn small" href="/log">📷 Snap meal</Link>
         </div>
         <div className="hero-grid">
           <Ring value={tir ?? 0} label={tir != null ? `${Math.round(tir * 100)}%` : "–"} sub="in range" color="#fff" />
@@ -105,6 +105,13 @@ function Home() {
           </section>
         );
       })}
+
+      <section className="quick">
+        <Link href="/log" className="qa"><span>📷</span><b>Snap or say a meal</b><small>photo, voice or text</small></Link>
+        <Link href="/check" className="qa"><span>🍽️</span><b>Before you eat</b><small>see the rise first</small></Link>
+      </section>
+
+      <AppSetupCard />
 
       {latest && latestRise && (
         <section className="card">

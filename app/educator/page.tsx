@@ -97,6 +97,7 @@ export default function Educator() {
       avgLog: avg(wk.map((m) => m.logSeconds).filter((x): x is number => typeof x === "number")),
       k: calibrate(meals.filter((m) => m.userId === u.id), readings).k,
       flags: flagsFor(u, meals, readings),
+      methods: (["photo", "voice", "text", "manual"] as const).map((k) => [k, wk.filter((m) => (m.source ?? "manual") === k).length] as const).filter(([, n]) => n > 0),
     };
   });
 
@@ -115,7 +116,7 @@ export default function Educator() {
         <div className="scroll-x">
           <table>
             <thead>
-              <tr><th>Participant</th><th>Meals</th><th>Meals/day</th><th>With rise</th><th>Readings</th><th>mg/dL per load</th><th>Avg log time</th><th>Flags</th><th></th></tr>
+              <tr><th>Participant</th><th>Meals</th><th>Meals/day</th><th>With rise</th><th>Readings</th><th>mg/dL per load</th><th>Avg log time</th><th>Logged by</th><th>Flags</th><th></th></tr>
             </thead>
             <tbody>
               {overview.map((o) => (
@@ -127,11 +128,12 @@ export default function Educator() {
                   <td>{o.readings}</td>
                   <td>{o.k ?? "–"}</td>
                   <td>{o.avgLog != null ? `${o.avgLog}s` : "–"}</td>
+                  <td className="tiny">{o.methods.map(([k, n]) => `${{ photo: "📷", voice: "🎙", text: "⌨️", manual: "🔎" }[k]} ${n}`).join("  ") || "–"}</td>
                   <td className="tiny">{o.flags.length ? o.flags.map((f, i) => <div key={i} style={{ color: FLAG_COLOR[f.level], fontWeight: f.level === "crit" ? 650 : 400 }}>{f.level === "crit" ? "⚠ " : "• "}{f.text}</div>) : <span className="muted">—</span>}</td>
                   <td><button className="btn small ghost" onClick={() => setSel(o.u.id)}>View</button></td>
                 </tr>
               ))}
-              {!overview.length && <tr><td colSpan={9} className="muted">No participants yet.</td></tr>}
+              {!overview.length && <tr><td colSpan={10} className="muted">No participants yet.</td></tr>}
             </tbody>
           </table>
         </div>

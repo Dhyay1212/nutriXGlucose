@@ -8,11 +8,14 @@ Built for the Forge hackathon (problem P031, "Diabetes apps don't understand dos
 | Route | What it does |
 |---|---|
 | `/` | Time in range, today's glucose load, 2-hour reading reminders, logging streak, model progress, 7-day load chart, today's plate with full nutrition |
-| `/log` | Photo → on-device YOLO detector → AI (OpenRouter or Anthropic) names dishes and estimates grams + 17 nutrients → confirm → glucose impact, predicted rise, 35-nutrient panel, swap ideas, context tags, quick re-log |
+| `/log` | Photo, voice or typed text ("2 roti, 1 katori dal, chai") → on-device YOLO detector / AI (OpenRouter or Anthropic) / offline parser → confirm → glucose impact, predicted rise, key nutrients, swap ideas, context tags, quick re-log |
+| `/check` | Before you eat: snap, say or type a plate → expected rise, what your own history says (per dish, time of day, walking after), gentler swaps; "I'm eating this" hands it to `/log` |
 | `/glucose` | Readings, time in range, timeline, CSV import (LibreView, Dexcom Clarity, generic; mg/dL or mmol/L) |
 | `/insights` | Personal model fit, what helps you (tag effects), small experiments, surprises, rise per dish, weekly AI note, educator notes |
 | `/educator` | Participants overview with flags (lows, highs, missing readings or meals), dish table, review notes, meal photos, CSV export of everything |
-| `/privacy` | What we store, CSV/JSON export, delete all my data, sign out |
+| `/privacy` | What we store, CSV/JSON export, delete all my data, install + reminder settings |
+
+**Installable app (PWA):** `app/manifest.ts`, icons in `public/icons`, `public/sw.js` caches pages, code, the detector model and dish data so logging works offline. Reminders (`lib/reminders.ts`): notifications when a meal isn't logged by its time or a 2-hour reading is due (while the app is open or in the background), plus a calendar file with daily alarms that works when the app is closed.
 
 ## How it works
 - **Dish names and nutrition**: the AI returns each dish, its grams and nutrition for the visible portion. The closest INDB dish is shown alongside as a reference. Manual logging uses INDB (1,169 dishes, 29 micronutrients) directly.

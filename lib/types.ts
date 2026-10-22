@@ -15,7 +15,7 @@ export interface Meal {
   photo?: string | null; // small JPEG data URL thumbnail
   totals: { kcal: number; carbs: number; protein: number; fat: number; fibre: number };
   logSeconds?: number | null; // time from opening the log screen to saving (pilot metric)
-  source?: "photo" | "manual";
+  source?: "photo" | "manual" | "text" | "voice";
   tags?: string[]; // context tags: walk, salad_first, meds, poor_sleep…
   createdAt: string;
 }
