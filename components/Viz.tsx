@@ -193,12 +193,13 @@ export function MealTimeBars({ rows }: { rows: { label: string; avg: number | nu
 /** Diverging bars: mg/dL vs the person's usual rise. Left (lower) is gentler, right (higher) is bigger. Labels carry the sign. */
 export function EffectBars({ rows }: { rows: { label: string; effect: number; n: number; strength: string }[] }) {
   if (!rows.length) return null;
-  const W = 340, rowH = 36, mid = 200, half = 120;
+  // Each habit gets its own line of text, with a diverging bar underneath, so labels never collide with bars.
+  const W = 340, rowH = 48, mid = 170, half = 120;
   const max = Math.max(20, ...rows.map((r) => Math.abs(r.effect)));
-  const x = (v: number) => mid + (v / max) * half * (v < 0 ? 1 : 0.95);
+  const x = (v: number) => mid + (v / max) * half;
   return (
     <svg className="chart" viewBox={`0 0 ${W} ${rows.length * rowH + 22}`} role="img" aria-label="Effect of each habit on your glucose rise">
-      <line x1={mid} x2={mid} y1="0" y2={rows.length * rowH} stroke="var(--grey)" />
+      <line x1={mid} x2={mid} y1="16" y2={rows.length * rowH} stroke="var(--grey)" />
       <text x={mid - 6} y={rows.length * rowH + 16} textAnchor="end">← smaller rise</text>
       <text x={mid + 6} y={rows.length * rowH + 16}>bigger rise →</text>
       {rows.map((r, i) => {
@@ -207,12 +208,11 @@ export function EffectBars({ rows }: { rows: { label: string; effect: number; n:
         const x0 = Math.min(x(r.effect), mid), w = Math.max(3, Math.abs(x(r.effect) - mid));
         return (
           <g key={r.label}>
-            <text x={4} y={y + 16} className="ink" fontSize="11.5">{r.label.length > 26 ? r.label.slice(0, 25) + "…" : r.label}</text>
-            <text x={4} y={y + 29} fontSize="10">{r.strength} · {r.n} meals</text>
-            <rect className="mark" x={x0} y={y + 8} width={w} height="16" rx="5" fill={good ? "var(--good)" : "var(--crit)"} opacity=".85">
+            <text x={4} y={y + 13} className="ink" fontSize="11.5" fontWeight="600">{r.label}<tspan fontWeight="400" fill="var(--faint)" fontSize="10">{`  ${r.strength} · ${r.n} meals`}</tspan></text>
+            <rect className="mark" x={x0} y={y + 20} width={w} height="16" rx="5" fill={good ? "var(--good)" : "var(--crit)"} opacity=".85">
               <title>{`${r.label}: ${r.effect > 0 ? "+" : ""}${r.effect} mg/dL vs your usual rise (${r.n} meals, ${r.strength})`}</title>
             </rect>
-            <text x={good ? x0 - 4 : x0 + w + 4} y={y + 20} textAnchor={good ? "end" : "start"} className="ink" fontSize="11.5" fontWeight="650">{r.effect > 0 ? "+" : "−"}{Math.abs(r.effect)}</text>
+            <text x={good ? x0 - 5 : x0 + w + 5} y={y + 32} textAnchor={good ? "end" : "start"} className="ink" fontSize="11.5" fontWeight="650">{r.effect > 0 ? "+" : "−"}{Math.abs(r.effect)} mg/dL</text>
           </g>
         );
       })}

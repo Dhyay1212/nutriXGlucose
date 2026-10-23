@@ -225,3 +225,7 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
 .qa b { font-size: .95rem; }
 .qa small { color: var(--muted); font-size: .78rem; }
 .qa:hover { border-color: var(--brand); }
+/* keep everything inside the phone width */
+.stack > *, .card > * { min-width: 0; }
+.chips { max-width: 100%; }
+input, select, textarea { max-width: 100%; }
